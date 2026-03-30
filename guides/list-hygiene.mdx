@@ -1,0 +1,99 @@
+---
+title: "List hygiene"
+description: "Keep your contact list healthy to protect deliverability and sender reputation."
+icon: "shield-check"
+---
+
+Sending email to invalid addresses or unengaged contacts damages your sender reputation with mailbox providers and AWS SES. A degraded reputation means more of your email lands in spam — or stops delivering entirely. Plunk automates some of this protection, but maintaining a clean list requires ongoing attention.
+
+## Why list hygiene matters
+
+- **Deliverability**: High bounce or complaint rates are signals that mailbox providers use to classify your email as spam. Even legitimate emails are affected when your domain or IP has a poor reputation.
+- **AWS SES limits**: SES enforces maximum bounce and complaint rate thresholds. Exceeding them can result in your SES account being placed under review or suspended.
+- **Project suspension**: Plunk monitors these rates and can automatically suspend a project that exceeds safe thresholds.
+
+## Automatic cleanup
+
+Plunk handles two categories of events automatically — you do not need to manually remove these contacts.
+
+### Permanent bounces
+
+When an email results in a `Permanent` bounce (hard bounce — the address does not exist or the domain has no mail server), Plunk:
+
+1. Unsubscribes the contact immediately
+2. Emits an `email.bounce` event with `bounceType: "Permanent"`
+3. Counts the bounce against your project's bounce rate
+
+`Transient` bounces (soft bounces — mailbox full, server temporarily unavailable, out-of-office) do **not** trigger unsubscription and do **not** count toward your bounce rate. They are tracked for visibility only.
+
+### Spam complaints
+
+When a contact marks your email as spam, Plunk:
+
+1. Unsubscribes the contact immediately
+2. Emits an `email.complaint` event with a `complainedAt` timestamp
+3. Counts the complaint against your project's complaint rate
+
+<Warning>
+  **`AUTO_PROJECT_DISABLE`** — When bounce or complaint rates exceed safe thresholds, Plunk automatically suspends the project. This is enabled by default. Email sending is halted until you review and resolve the underlying issue. You can disable this behavior by setting the `AUTO_PROJECT_DISABLE` environment variable to `false` in your self-hosted deployment.
+</Warning>
+
+## Best practices
+
+### Remove unsubscribed contacts periodically
+
+Plunk suppresses emails to unsubscribed contacts, so leaving them in your database does not cause deliverability harm on its own. However, periodically exporting and removing stale unsubscribed contacts keeps your list size accurate and reduces noise in analytics.
+
+### Do not send to stale lists
+
+If you have contacts who have not received email in 6–12 months, treat the list as stale. A large percentage of those addresses may now be invalid (triggering bounces) or reassigned (triggering complaints from new owners who did not sign up). Warm up stale lists with a small engagement test before sending broadly.
+
+### Use double opt-in
+
+Requiring new contacts to confirm their subscription reduces the chance of invalid addresses entering your list in the first place. It also provides documented proof of consent, which reduces the chance of spam complaints.
+
+### Include an unsubscribe link in every marketing email
+
+This is required for marketing emails. Contacts who cannot find an unsubscribe link will use the spam button instead, which counts against your complaint rate. Plunk adds a default unsubscribe footer to marketing emails, but ensure it is visible and functional.
+
+## Using segments for targeted sends
+
+Instead of sending to your entire list, use [segments](/features/contacts-and-segments) to target only contacts who are likely to engage. Segment examples:
+
+- Contacts who opened an email in the last 60 days
+- Contacts with a specific `plan` or `product` data field
+- Contacts who clicked a link in the last campaign
+
+Sending to smaller, engaged audiences improves your open and click rates, which in turn improves your sender reputation.
+
+## Re-engagement workflows
+
+Before removing inactive contacts, run a re-engagement campaign to win back those who are genuinely interested. A typical re-engagement sequence:
+
+<Steps>
+  <Step title="Define inactivity">
+    Create a segment of contacts who have not opened or clicked an email in 90 days.
+  </Step>
+  <Step title="Send a re-engagement email">
+    Send a single email with a clear call to action — a discount, a product update, or simply a "Still interested?" message. Keep it short.
+  </Step>
+  <Step title="Create a workflow to track responses">
+    Trigger a workflow on `email.click` or a custom event from the re-engagement email. Tag contacts who respond so you can exclude them from cleanup.
+  </Step>
+  <Step title="Remove non-responders">
+    Contacts who do not engage with the re-engagement email are unlikely to engage in the future. Unsubscribe or delete them to keep your list clean.
+  </Step>
+</Steps>
+
+## Monitoring bounce and complaint rates
+
+You can monitor event activity by setting up workflows triggered by `email.bounce` and `email.complaint`. Forward these events to your own application via a [webhook](/guides/webhooks) to maintain a real-time view of your list health outside of Plunk.
+
+Key metrics to watch:
+
+| Metric | Safe threshold |
+| --- | --- |
+| Bounce rate (permanent bounces / emails sent) | Below 2% |
+| Complaint rate (complaints / emails delivered) | Below 0.1% |
+
+These thresholds align with AWS SES and Gmail Postmaster Tools guidelines. Staying well below them provides a buffer before deliverability is affected.

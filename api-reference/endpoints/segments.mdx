@@ -1,0 +1,359 @@
+---
+title: 'Segments'
+description: 'Create and manage audience segments for targeted campaigns and workflows'
+---
+
+Segments group contacts based on shared attributes or behaviors. There are two types:
+
+- **Dynamic** — membership is evaluated on-the-fly using filter conditions against contact data and event history.
+- **Static** — membership is managed manually by adding or removing specific email addresses.
+
+<Note>
+  All segment endpoints require a **secret key** (`sk_*`).
+</Note>
+
+---
+
+## Filter condition schema
+
+Dynamic segments use a nested `FilterCondition` object to define who belongs to the segment.
+
+```json
+{
+  "logic": "AND",
+  "groups": [
+    {
+      "filters": [
+        {
+          "field": "data.plan",
+          "operator": "equals",
+          "value": "premium"
+        },
+        {
+          "field": "subscribed",
+          "operator": "equals",
+          "value": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Available operators
+
+| Operator | Description |
+|---|---|
+| `equals` | Exact match |
+| `notEquals` | Does not match |
+| `contains` | String contains value |
+| `notContains` | String does not contain value |
+| `greaterThan` | Numeric greater than |
+| `lessThan` | Numeric less than |
+| `greaterThanOrEqual` | Numeric greater than or equal |
+| `lessThanOrEqual` | Numeric less than or equal |
+| `exists` | Field is present and non-null |
+| `notExists` | Field is absent or null |
+| `within` | Date is within the last N `unit` (days/hours/minutes) |
+| `olderThan` | Date is older than N `unit` |
+| `triggered` | Event was tracked at least once |
+| `triggeredWithin` | Event was tracked within the last N `unit` |
+| `triggeredOlderThan` | Event was last tracked more than N `unit` ago |
+| `notTriggered` | Event has never been tracked |
+
+For time-based operators (`within`, `olderThan`, `triggeredWithin`, `triggeredOlderThan`) also provide:
+- `value` — the numeric amount
+- `unit` — one of `days`, `hours`, or `minutes`
+
+---
+
+## List segments
+
+`GET /segments`
+
+Returns all segments for the authenticated project.
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/segments \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+[
+  {
+    "id": "clx_seg_abc123",
+    "name": "Premium Users",
+    "type": "DYNAMIC",
+    "memberCount": 843,
+    "trackMembership": true,
+    "createdAt": "2024-01-01T00:00:00.000Z"
+  }
+]
+```
+
+---
+
+## Create segment
+
+`POST /segments`
+
+Creates a new segment.
+
+### Body parameters
+
+<ParamField body="name" type="string" required>
+  Segment name.
+</ParamField>
+
+<ParamField body="type" type="string" default="DYNAMIC">
+  Segment type: `DYNAMIC` or `STATIC`.
+</ParamField>
+
+<ParamField body="condition" type="object">
+  Filter condition defining dynamic membership. Required when `type` is `DYNAMIC`.
+
+  <Expandable title="FilterCondition properties">
+    <ParamField body="condition.logic" type="string" required>
+      How to combine groups: `AND` or `OR`.
+    </ParamField>
+    <ParamField body="condition.groups" type="array" required>
+      Array of filter groups. Each group contains an array of `filters`.
+
+      <Expandable title="FilterGroup properties">
+        <ParamField body="condition.groups[].filters" type="array" required>
+          Array of filter conditions.
+
+          <Expandable title="SegmentFilter properties">
+            <ParamField body="field" type="string" required>
+              Contact field to test, e.g. `data.plan`, `subscribed`, or an event name for event-based operators.
+            </ParamField>
+            <ParamField body="operator" type="string" required>
+              Comparison operator (see table above).
+            </ParamField>
+            <ParamField body="value" type="any">
+              Value to compare against. Not required for existence or event-presence operators.
+            </ParamField>
+            <ParamField body="unit" type="string">
+              Time unit for date/event operators: `days`, `hours`, or `minutes`.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description.
+</ParamField>
+
+<ParamField body="trackMembership" type="boolean" default="false">
+  When `true`, Plunk tracks when contacts enter and exit this segment and fires `segment.<slug>.entry` / `segment.<slug>.exit` system events that can trigger workflows.
+</ParamField>
+
+<CodeGroup>
+
+```bash Dynamic segment
+curl --request POST \
+  --url https://next-api.useplunk.com/segments \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Active Premium Users",
+    "type": "DYNAMIC",
+    "condition": {
+      "logic": "AND",
+      "groups": [
+        {
+          "filters": [
+            { "field": "data.plan", "operator": "equals", "value": "premium" },
+            { "field": "subscribed", "operator": "equals", "value": true }
+          ]
+        }
+      ]
+    },
+    "trackMembership": true
+  }'
+```
+
+```bash Static segment
+curl --request POST \
+  --url https://next-api.useplunk.com/segments \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "VIP Customers",
+    "type": "STATIC"
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## Get segment
+
+`GET /segments/:id`
+
+Retrieves a single segment by ID, including its current member count.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The segment ID.
+</ParamField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/segments/clx_seg_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Update segment
+
+`PATCH /segments/:id`
+
+Updates a segment's name, description, filter condition, or membership tracking setting.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The segment ID.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="name" type="string">Segment name.</ParamField>
+<ParamField body="description" type="string">Segment description.</ParamField>
+<ParamField body="condition" type="object">Updated filter condition object.</ParamField>
+<ParamField body="trackMembership" type="boolean">Enable or disable membership tracking.</ParamField>
+
+```bash Example
+curl --request PATCH \
+  --url https://next-api.useplunk.com/segments/clx_seg_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Active Premium Users (Updated)",
+    "trackMembership": false
+  }'
+```
+
+---
+
+## Delete segment
+
+`DELETE /segments/:id`
+
+Permanently deletes a segment.
+
+<Warning>
+  Deleting a segment that is used by a campaign or workflow will break those references.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The segment ID.
+</ParamField>
+
+Returns `204 No Content` on success.
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/segments/clx_seg_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## List contacts in segment
+
+`GET /segments/:id/contacts`
+
+Returns a paginated list of contacts that currently belong to the segment.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The segment ID.
+</ParamField>
+
+### Query parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number (1-indexed).
+</ParamField>
+
+<ParamField query="pageSize" type="number" default="20">
+  Contacts per page. Maximum `100`.
+</ParamField>
+
+```bash Example
+curl --request GET \
+  --url 'https://next-api.useplunk.com/segments/clx_seg_abc123/contacts?page=1&pageSize=50' \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Add contacts to static segment
+
+`POST /segments/:id/members`
+
+Adds contacts to a static segment by email address. Creates any contacts that do not yet exist.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The segment ID. The segment must be of type `STATIC`.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="emails" type="string[]" required>
+  Array of email addresses to add to the segment.
+</ParamField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/segments/clx_seg_abc123/members \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "emails": ["alice@example.com", "bob@example.com"]
+  }'
+```
+
+---
+
+## Remove contacts from static segment
+
+`DELETE /segments/:id/members`
+
+Removes contacts from a static segment by email address.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The segment ID. The segment must be of type `STATIC`.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="emails" type="string[]" required>
+  Array of email addresses to remove from the segment.
+</ParamField>
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/segments/clx_seg_abc123/members \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "emails": ["alice@example.com"]
+  }'
+```

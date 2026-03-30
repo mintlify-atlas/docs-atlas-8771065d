@@ -1,0 +1,110 @@
+---
+title: "Campaigns"
+description: "Send one-time email broadcasts to your entire audience or a targeted segment — newsletters, announcements, and promotions."
+keywords: ["campaigns", "broadcast", "newsletter", "segments", "schedule", "analytics"]
+icon: "bullhorn"
+---
+
+Campaigns are one-time email broadcasts sent to a group of contacts. Use them for newsletters, product announcements, promotional offers, and any communication directed at a defined audience rather than a single recipient.
+
+Unlike [transactional emails](/features/transactional-emails), campaigns are sent only to subscribed contacts. A contact who has unsubscribed will not receive campaign emails.
+
+## Creating a campaign
+
+<Steps>
+  <Step title="Navigate to Campaigns in the dashboard">
+    Open the **Campaigns** section and click **Create Campaign**.
+  </Step>
+  <Step title="Set the name and content">
+    Give the campaign an internal name and write the email content:
+
+    - **Name** — for your reference only, not shown to recipients
+    - **Description** — optional internal notes
+    - **Subject** — the email subject line
+    - **Body** — HTML email content; supports `{{variable}}` substitution from contact data
+    - **From** — must be from a [verified domain](/guides/verifying-domains)
+    - **From name** — optional display name
+    - **Reply-to** — optional reply-to address
+  </Step>
+  <Step title="Choose your target audience">
+    Select who receives the campaign:
+
+    - **All subscribed contacts** — sends to every contact with `subscribed: true`
+    - **Segment** — sends only to contacts in a specific [saved segment](/features/contacts-and-segments#segments)
+  </Step>
+  <Step title="Send a test email (optional)">
+    Before sending to your full list, use the **Send Test** option to deliver a preview to any email address. This sends a real email so you can verify formatting, links, and content.
+  </Step>
+  <Step title="Send or schedule">
+    Choose to send immediately or schedule for a future date and time. Scheduled campaigns show a status of **SCHEDULED** until they are dispatched.
+  </Step>
+</Steps>
+
+## Sending options
+
+<CardGroup cols={2}>
+  <Card title="Send immediately" icon="paper-plane">
+    The campaign enters the send queue right away. Plunk processes it in the background using BullMQ, so large audiences are handled without blocking your dashboard.
+  </Card>
+  <Card title="Schedule for later" icon="clock">
+    Provide an ISO 8601 timestamp for `scheduledFor`. The campaign stays in **SCHEDULED** state until that time arrives, then enters the queue automatically.
+  </Card>
+</CardGroup>
+
+## Background queue processing
+
+Campaigns are sent asynchronously via a background worker. After you send a campaign, Plunk:
+
+1. Resolves the audience (all subscribed contacts or a segment).
+2. Queues individual send jobs for each recipient.
+3. Processes the queue with retry logic and rate limiting.
+
+Depending on your audience size, it can take several minutes to several hours for all emails to be dispatched. Monitor progress in the campaign detail page.
+
+<Note>
+The campaign detail page shows a live count of sent, delivered, opened, clicked, and bounced emails as the queue is processed.
+</Note>
+
+## Campaign analytics
+
+Each campaign tracks the following metrics:
+
+| Metric | Description |
+|---|---|
+| **Total recipients** | Number of contacts targeted |
+| **Sent** | Emails successfully handed off to AWS SES |
+| **Delivered** | Emails confirmed delivered to the recipient's server |
+| **Opened** | Unique contacts who opened the email |
+| **Clicked** | Unique contacts who clicked a link |
+| **Bounced** | Emails that bounced (hard or soft) |
+
+<Tip>
+Contacts whose emails bounce will be automatically unsubscribed to protect your sender reputation. See [List hygiene](/guides/list-hygiene) for details.
+</Tip>
+
+## Canceling a scheduled campaign
+
+A campaign in **SCHEDULED** state can be canceled before it is dispatched. Canceling sets the status to **CANCELLED** and removes it from the send queue.
+
+You cannot cancel a campaign that is already in **SENDING** state — emails already enqueued will continue to be delivered.
+
+To cancel via the API:
+
+```bash
+curl -X POST https://api.useplunk.com/campaigns/{id}/cancel \
+  -H "Authorization: Bearer sk_live_..."
+```
+
+## Campaign statuses
+
+| Status | Description |
+|---|---|
+| `DRAFT` | Created but not yet sent or scheduled |
+| `SCHEDULED` | Queued for a future send time |
+| `SENDING` | Currently being processed and dispatched |
+| `SENT` | All emails have been handed off to SES |
+| `CANCELLED` | Canceled before sending completed |
+
+## API reference
+
+See the full endpoint reference at [Campaigns](/api-reference/endpoints/campaigns).

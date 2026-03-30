@@ -1,0 +1,169 @@
+---
+title: 'Domains'
+description: 'Add and verify sending domains for your project'
+---
+
+Before you can send emails, at least one domain must be added to your project and verified via DNS. All `from` addresses used in transactional emails, templates, and campaigns must belong to a verified domain.
+
+<Note>
+  Domain endpoints require user authentication and a verified email address. They are scoped to a specific project by `projectId`.
+</Note>
+
+---
+
+## Get domains for a project
+
+`GET /domains/project/:projectId`
+
+Returns all domains linked to a project.
+
+### Path parameters
+
+<ParamField path="projectId" type="string" required>
+  The project ID.
+</ParamField>
+
+### Response
+
+Array of domain objects.
+
+<ResponseField name="id" type="string">Domain record ID.</ResponseField>
+<ResponseField name="domain" type="string">Domain name (e.g. `myapp.com`).</ResponseField>
+<ResponseField name="projectId" type="string">ID of the project this domain belongs to.</ResponseField>
+<ResponseField name="verified" type="boolean">Whether the domain has passed DNS verification.</ResponseField>
+<ResponseField name="createdAt" type="string">ISO 8601 timestamp when the domain was added.</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/domains/project/clx_proj_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+[
+  {
+    "id": "clx_dom_abc123",
+    "domain": "myapp.com",
+    "projectId": "clx_proj_abc123",
+    "verified": true,
+    "createdAt": "2024-01-01T00:00:00.000Z"
+  }
+]
+```
+
+---
+
+## Add domain
+
+`POST /domains`
+
+Adds a new domain to a project. After adding, DNS records must be configured before the domain passes verification.
+
+<Note>
+  You must be an admin of the target project to add a domain. A domain can only be linked to one project at a time — attempting to add a domain that is already linked to another project will return an error.
+</Note>
+
+### Body parameters
+
+<ParamField body="projectId" type="string" required>
+  The project to link the domain to.
+</ParamField>
+
+<ParamField body="domain" type="string" required>
+  The domain name to add, e.g. `myapp.com`. Do not include a protocol or path.
+</ParamField>
+
+### Response
+
+Returns the newly created domain object with HTTP `201`.
+
+<ResponseField name="id" type="string">Domain record ID.</ResponseField>
+<ResponseField name="domain" type="string">Domain name.</ResponseField>
+<ResponseField name="projectId" type="string">Linked project ID.</ResponseField>
+<ResponseField name="verified" type="boolean">`false` until DNS verification passes.</ResponseField>
+<ResponseField name="createdAt" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/domains \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "projectId": "clx_proj_abc123",
+    "domain": "myapp.com"
+  }'
+```
+
+---
+
+## Check domain verification
+
+`GET /domains/:id/verify`
+
+Triggers a fresh DNS verification check for the domain and returns the updated verification status.
+
+<Tip>
+  Poll this endpoint after configuring your DNS records to confirm when verification succeeds.
+</Tip>
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The domain record ID.
+</ParamField>
+
+### Response
+
+Returns the verification status object.
+
+<ResponseField name="verified" type="boolean">
+  `true` when all required DNS records are correctly configured.
+</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/domains/clx_dom_abc123/verify \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+{
+  "verified": true
+}
+```
+
+---
+
+## Remove domain
+
+`DELETE /domains/:id`
+
+Removes a domain from its linked project.
+
+<Warning>
+  Removing a verified domain will immediately prevent emails from being sent using any `from` address on that domain. Update all templates and campaigns that use the domain before removing it.
+</Warning>
+
+You must be an admin of the project the domain belongs to.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The domain record ID.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` on successful removal.</ResponseField>
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/domains/clx_dom_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+{
+  "success": true
+}
+```

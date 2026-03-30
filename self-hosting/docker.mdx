@@ -1,0 +1,236 @@
+---
+title: "Docker deployment"
+description: "How the Plunk Docker image works: runtime environment injection, nginx routing, SMTP TLS, and upgrading."
+---
+
+Plunk ships as a single Docker image (`ghcr.io/useplunk/plunk`) that bundles every application service. PM2 manages the processes inside the container, and nginx routes incoming requests to the correct service based on the `Host` header.
+
+## The image
+
+```bash
+docker pull ghcr.io/useplunk/plunk:latest
+```
+
+The image is published to the GitHub Container Registry. Tags follow semantic versioning (`v1.2.3`) and `latest` always points to the most recent stable release.
+
+The image contains:
+
+- **API server** — Express.js HTTP API on port 8080
+- **Worker process** — BullMQ worker that processes email, campaign, and workflow queues
+- **Web dashboard** — Next.js app on port 3000
+- **Landing page** — Next.js app on port 4000
+- **Documentation site** — Next.js app on port 1000
+- **SMTP relay** — Optional SMTP server on ports 465 and 587
+- **nginx** — Reverse proxy on port 80 that routes by `Host` header to the services above
+
+## docker-compose.yml breakdown
+
+The recommended way to run Plunk is with Docker Compose. Here is the full `plunk` service definition from the official Compose file:
+
+```yaml
+plunk:
+  image: ghcr.io/useplunk/plunk:latest
+  container_name: plunk
+  restart: unless-stopped
+  environment:
+    SERVICE: all
+    NODE_ENV: production
+
+    DATABASE_URL: postgresql://plunk:${DB_PASSWORD:-changeme123}@postgres:5432/plunk
+    DIRECT_DATABASE_URL: postgresql://plunk:${DB_PASSWORD:-changeme123}@postgres:5432/plunk
+    REDIS_URL: redis://redis:6379
+    JWT_SECRET: ${JWT_SECRET}
+
+    API_DOMAIN: ${API_DOMAIN:-api.localhost}
+    DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:-app.localhost}
+    LANDING_DOMAIN: ${LANDING_DOMAIN:-www.localhost}
+    WIKI_DOMAIN: ${WIKI_DOMAIN:-docs.localhost}
+    USE_HTTPS: ${USE_HTTPS:-false}
+
+    AWS_SES_REGION: ${AWS_SES_REGION}
+    AWS_SES_ACCESS_KEY_ID: ${AWS_SES_ACCESS_KEY_ID}
+    AWS_SES_SECRET_ACCESS_KEY: ${AWS_SES_SECRET_ACCESS_KEY}
+    SES_CONFIGURATION_SET: ${SES_CONFIGURATION_SET}
+    SES_CONFIGURATION_SET_NO_TRACKING: ${SES_CONFIGURATION_SET_NO_TRACKING:-}
+
+    S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+    S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-plunk}
+    S3_ACCESS_KEY_SECRET: ${S3_ACCESS_KEY_SECRET:-plunkminiopass}
+    S3_BUCKET: ${S3_BUCKET:-uploads}
+    S3_PUBLIC_URL: ${S3_PUBLIC_URL:-http://localhost:9000/uploads}
+    S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+
+    NTFY_URL: ${NTFY_URL:-http://ntfy/plunk-notifications}
+    SMTP_DOMAIN: ${SMTP_DOMAIN:-}
+
+  volumes:
+    - plunk_data:/app/data
+
+  ports:
+    - "${PORT_SECURE:-465}:465"
+    - "${PORT_SUBMISSION:-587}:587"
+
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    ntfy:
+      condition: service_healthy
+```
+
+The `plunk` container depends on all four infrastructure services and waits for their health checks before starting.
+
+## Runtime environment injection
+
+The Next.js apps (dashboard, landing, wiki) are built at image creation time with placeholder URLs baked into the JavaScript bundles. When the container starts, the entrypoint script (`docker-entrypoint-nginx.sh`) replaces those placeholder URLs with the real values derived from your `*_DOMAIN` and `USE_HTTPS` environment variables.
+
+This means the same Docker image can be deployed to any domain without rebuilding. You only need to change the environment variables.
+
+<Note>
+  You do not need to set `API_URI`, `DASHBOARD_URI`, or any `NEXT_PUBLIC_*` variables. The entrypoint script constructs them automatically from `API_DOMAIN`, `DASHBOARD_DOMAIN`, and `USE_HTTPS`.
+</Note>
+
+## Subdomain routing
+
+nginx inside the container routes requests by `Host` header:
+
+| Host header | Internal port | Service |
+|-------------|---------------|---------|
+| `$API_DOMAIN` | 8080 | API server |
+| `$DASHBOARD_DOMAIN` | 3000 | Web dashboard |
+| `$LANDING_DOMAIN` | 4000 | Landing page |
+| `$WIKI_DOMAIN` | 1000 | Documentation |
+
+The container exposes port 80 for HTTP traffic. Your external reverse proxy (Traefik, nginx, Caddy) should terminate TLS and forward all subdomain traffic to port 80 of the `plunk` container.
+
+## Database migrations
+
+Prisma migrations run automatically when the container starts, before any application process is launched. If migrations fail, the container will exit. Check the container logs if your instance fails to start:
+
+```bash
+docker compose logs plunk --follow
+```
+
+## Running individual services
+
+Set the `SERVICE` environment variable to run only specific processes instead of the full stack:
+
+```bash
+# API server only
+SERVICE=api
+
+# BullMQ worker only
+SERVICE=worker
+
+# Web dashboard only
+SERVICE=web
+
+# All services (default)
+SERVICE=all
+```
+
+This is useful if you want to scale the worker separately or run services across multiple containers.
+
+## Storage (Minio)
+
+The bundled Minio container provides S3-compatible file storage for email template assets and uploads. It is pre-configured to work with Plunk out of the box — no extra setup is needed.
+
+Minio exposes two ports:
+
+| Port | Purpose |
+|------|---------|
+| `9000` | S3 API (used by Plunk) |
+| `9001` | Minio console UI |
+
+To use an external S3 bucket instead (AWS S3, Cloudflare R2, etc.), set the `S3_*` environment variables to point at your bucket and remove or disable the Minio service from the Compose file.
+
+## Notifications (ntfy)
+
+The bundled ntfy container receives internal system notifications from Plunk — for example, when a project is suspended due to high bounce rates. The ntfy web UI is available on the port configured by `NTFY_PORT` (default: `8080`). Subscribe to the `plunk-notifications` topic to receive notifications.
+
+To use an external ntfy.sh server or your own instance, set `NTFY_URL` to your topic URL.
+
+## SMTP TLS certificates
+
+The optional SMTP relay (ports 465 and 587) requires TLS certificates in production. Provide them by mounting files into the container.
+
+<Tabs>
+  <Tab title="Traefik acme.json">
+    If you use Traefik (as in Dokploy or Coolify), mount its `acme.json` file and set `SMTP_DOMAIN` so Plunk can extract the correct certificate:
+
+    ```yaml
+    environment:
+      SMTP_DOMAIN: "smtp.yourdomain.com"
+    volumes:
+      - plunk_data:/app/data
+      - /path/to/acme.json:/certs/acme.json:ro
+    ```
+
+    Plunk reads the certificate for `SMTP_DOMAIN` from `acme.json` automatically on startup.
+  </Tab>
+  <Tab title="PEM files">
+    Mount certificate files directly:
+
+    ```yaml
+    volumes:
+      - plunk_data:/app/data
+      - /path/to/privkey.pem:/certs/privkey.pem:ro
+      - /path/to/fullchain.pem:/certs/fullchain.pem:ro
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  If no certificates are mounted, the SMTP server starts without TLS. This is acceptable for local testing but should not be used in production.
+</Note>
+
+## Health checks and logs
+
+The `plunk` container has a built-in health check that polls nginx on port 80:
+
+```bash
+# Check container health status
+docker compose ps
+
+# Stream logs from all containers
+docker compose logs --follow
+
+# Stream logs from the Plunk app only
+docker compose logs plunk --follow
+```
+
+## Upgrading
+
+<Steps>
+  <Step title="Pull the new image">
+    ```bash
+    docker compose pull plunk
+    ```
+  </Step>
+  <Step title="Restart the container">
+    ```bash
+    docker compose up -d plunk
+    ```
+
+    The new container runs database migrations automatically before starting.
+  </Step>
+</Steps>
+
+<Warning>
+  Always read the release notes before upgrading. Breaking changes, if any, are noted in the changelog on [GitHub](https://github.com/useplunk/plunk/releases).
+</Warning>
+
+## Building from source
+
+If you want to build a custom image from the repository:
+
+```bash
+git clone https://github.com/useplunk/plunk.git
+cd plunk
+docker build -t plunk:custom .
+```
+
+Then update the `image:` field in your `docker-compose.yml` to `plunk:custom`.

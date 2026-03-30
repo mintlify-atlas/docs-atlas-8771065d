@@ -1,0 +1,240 @@
+---
+title: 'Templates'
+description: 'Create and manage reusable email templates'
+---
+
+Templates are saved email layouts that can be referenced when sending transactional emails or building campaigns. They support variable substitution using `{{variableName}}` syntax.
+
+<Note>
+  All template endpoints require a **secret key** (`sk_*`). The `from` address must belong to a verified domain on your project.
+</Note>
+
+## Variable substitution
+
+Use double-curly-brace syntax in the `subject` or `body` to insert dynamic values at send time:
+
+```html
+<p>Hello {{firstName}}, your order {{orderId}} has shipped.</p>
+```
+
+Pass the values in the `data` field when calling `/v1/send`:
+
+```json
+{
+  "template": "clx_tmpl_abc123",
+  "to": "user@example.com",
+  "data": {
+    "firstName": "Jane",
+    "orderId": { "value": "ORD-9876", "persistent": false }
+  }
+}
+```
+
+**Fallback values**: use `{{field ?? default}}` when a variable may not always be present:
+
+```html
+<p>Hello {{firstName ?? there}}!</p>
+```
+
+**System variables** are always available without passing them in `data`:
+
+| Variable | Description |
+|---|---|
+| `{{id}}` | Contact ID |
+| `{{email}}` | Contact email |
+| `{{unsubscribeUrl}}` | One-click unsubscribe link |
+| `{{subscribeUrl}}` | Re-subscribe link |
+| `{{manageUrl}}` | Subscription preferences page |
+
+---
+
+## List templates
+
+`GET /templates`
+
+Returns a paginated list of templates for the authenticated project.
+
+### Query parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number (1-indexed).
+</ParamField>
+
+<ParamField query="pageSize" type="number" default="20">
+  Number of templates per page. Maximum `100`.
+</ParamField>
+
+<ParamField query="search" type="string">
+  Filter templates by name.
+</ParamField>
+
+<ParamField query="type" type="string">
+  Filter by template type. One of `TRANSACTIONAL` or `MARKETING`.
+</ParamField>
+
+### Response
+
+<ResponseField name="templates" type="array">Array of template objects.</ResponseField>
+<ResponseField name="total" type="integer">Total number of matching templates.</ResponseField>
+<ResponseField name="page" type="integer">Current page number.</ResponseField>
+<ResponseField name="pageSize" type="integer">Items per page.</ResponseField>
+<ResponseField name="totalPages" type="integer">Total number of pages.</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url 'https://next-api.useplunk.com/templates?type=TRANSACTIONAL' \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Create template
+
+`POST /templates`
+
+Creates a new email template.
+
+### Body parameters
+
+<ParamField body="name" type="string" required>
+  Internal name for the template.
+</ParamField>
+
+<ParamField body="subject" type="string" required>
+  Email subject line. Supports `{{variable}}` syntax.
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  HTML email body. Supports `{{variable}}` syntax.
+</ParamField>
+
+<ParamField body="from" type="string" required>
+  Sender email address. Must be from a verified domain on your project.
+</ParamField>
+
+<ParamField body="fromName" type="string">
+  Sender display name.
+</ParamField>
+
+<ParamField body="replyTo" type="string">
+  Reply-to email address.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description for internal reference.
+</ParamField>
+
+<ParamField body="type" type="string">
+  Template type: `TRANSACTIONAL` or `MARKETING`. Defaults to `TRANSACTIONAL`.
+</ParamField>
+
+### Response
+
+Returns the created template object with HTTP `201`.
+
+<ResponseField name="id" type="string">Template ID.</ResponseField>
+<ResponseField name="name" type="string">Template name.</ResponseField>
+<ResponseField name="subject" type="string">Email subject.</ResponseField>
+<ResponseField name="body" type="string">HTML body.</ResponseField>
+<ResponseField name="from" type="string">Sender address.</ResponseField>
+<ResponseField name="fromName" type="string">Sender display name.</ResponseField>
+<ResponseField name="replyTo" type="string">Reply-to address.</ResponseField>
+<ResponseField name="type" type="string">Template type (`TRANSACTIONAL` or `MARKETING`).</ResponseField>
+<ResponseField name="createdAt" type="string">ISO 8601 creation timestamp.</ResponseField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/templates \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Password Reset",
+    "subject": "Reset your password",
+    "body": "<h1>Reset your password</h1><p>Hi {{firstName ?? there}},</p><p>Click below to reset your password. This link expires in 1 hour.</p><p><a href=\"{{resetLink}}\">Reset Password</a></p><p><a href=\"{{unsubscribeUrl}}\">Unsubscribe</a></p>",
+    "from": "noreply@myapp.com",
+    "fromName": "My App",
+    "type": "TRANSACTIONAL"
+  }'
+```
+
+---
+
+## Get template
+
+`GET /templates/:id`
+
+Retrieves a single template by ID.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The template ID.
+</ParamField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/templates/clx_tmpl_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Update template
+
+`PATCH /templates/:id`
+
+Updates one or more fields on an existing template. All fields are optional; only provided fields are changed.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The template ID.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="name" type="string">Template name.</ParamField>
+<ParamField body="description" type="string">Template description.</ParamField>
+<ParamField body="subject" type="string">Email subject line.</ParamField>
+<ParamField body="body" type="string">HTML email body.</ParamField>
+<ParamField body="from" type="string">Sender email (must be a verified domain).</ParamField>
+<ParamField body="fromName" type="string">Sender display name.</ParamField>
+<ParamField body="replyTo" type="string">Reply-to email address.</ParamField>
+<ParamField body="type" type="string">Template type: `TRANSACTIONAL` or `MARKETING`.</ParamField>
+
+```bash Example
+curl --request PATCH \
+  --url https://next-api.useplunk.com/templates/clx_tmpl_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "subject": "Reset your Plunk password",
+    "fromName": "Plunk Team"
+  }'
+```
+
+---
+
+## Delete template
+
+`DELETE /templates/:id`
+
+Permanently deletes a template.
+
+<Warning>
+  Deleting a template that is actively used by a campaign or workflow will break those references.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The template ID.
+</ParamField>
+
+Returns `204 No Content` on success.
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/templates/clx_tmpl_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```

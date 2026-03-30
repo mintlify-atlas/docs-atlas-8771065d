@@ -1,0 +1,138 @@
+---
+title: "Introduction"
+description: "What Plunk is and how it works"
+---
+
+Plunk is an open-source email platform built on top of AWS SES. It gives developers a complete email infrastructure — transactional emails, marketing campaigns, workflow automations, contact management, and analytics — under a single API and dashboard.
+
+You can self-host Plunk on your own infrastructure or use the hosted service at [useplunk.com](https://www.useplunk.com).
+
+<Note>
+  Plunk is licensed under AGPL-3.0. If you self-host, consider supporting the project via [GitHub Sponsors](https://github.com/sponsors/driaug).
+</Note>
+
+## How Plunk compares to alternatives
+
+Plunk is a self-hosted, open-source alternative to managed email services:
+
+| | Plunk | SendGrid | Resend | Mailgun |
+|---|---|---|---|---|
+| Open source | Yes | No | No | No |
+| Self-hostable | Yes | No | No | No |
+| Built on AWS SES | Yes | No | No | No |
+| Transactional emails | Yes | Yes | Yes | Yes |
+| Campaigns | Yes | Yes | No | No |
+| Workflow automation | Yes | Yes | No | No |
+| Contact management | Yes | Yes | No | Yes |
+
+The main advantage of Plunk is that you own your infrastructure and data. You pay AWS SES rates directly instead of per-email SaaS pricing, which becomes significant at scale.
+
+## Core capabilities
+
+<CardGroup cols={2}>
+  <Card title="Transactional emails" icon="envelope" href="/features/transactional-emails">
+    Send one-to-one emails via the REST API — password resets, order confirmations, notifications. Supports HTML bodies, template variable substitution, attachments, and custom headers.
+  </Card>
+  <Card title="Email campaigns" icon="bullhorn" href="/features/campaigns">
+    Send newsletters and product updates to your full contact list or targeted audience segments. Schedule campaigns in advance or send immediately.
+  </Card>
+  <Card title="Workflow automation" icon="diagram-project" href="/features/workflows">
+    Build automated email sequences triggered by contact events. Add delays, conditional branches, and webhook steps to create sophisticated lifecycle campaigns.
+  </Card>
+  <Card title="Contact management" icon="users" href="/features/contacts-and-segments">
+    Store and organize contacts with custom data fields. Import via CSV. Create dynamic segments based on contact properties or behavior.
+  </Card>
+  <Card title="Email templates" icon="file-code" href="/features/templates">
+    Define reusable templates for both transactional and marketing emails. Templates support `{{variable}}` substitution and can be referenced by ID at send time.
+  </Card>
+  <Card title="Analytics" icon="chart-line" href="/guides/tracking">
+    Track opens, clicks, bounces, and custom events in real time. Use event data to trigger workflows and build audience segments.
+  </Card>
+</CardGroup>
+
+## Deployment options
+
+### Self-hosted
+
+Run Plunk on your own infrastructure using Docker. You supply an AWS SES account for email delivery and configure the rest via environment variables.
+
+<Tip>
+  The official Docker image is published at [ghcr.io/useplunk/plunk](https://github.com/useplunk/plunk/pkgs/container/plunk). Pull the latest tag to get started.
+</Tip>
+
+**What you need to self-host:**
+- AWS account with SES enabled (and out of sandbox mode for production sending)
+- A server or container platform (Docker, Kubernetes, Railway, Render, etc.)
+- PostgreSQL database and Redis instance
+- S3-compatible object storage (or AWS S3)
+
+See [Self-Hosting](/self-hosting/introduction) for the full deployment guide.
+
+### Hosted service
+
+If you don't want to manage infrastructure, [useplunk.com](https://www.useplunk.com) offers a hosted version. Sign up, create a project, and start sending — no servers to maintain.
+
+## Architecture overview
+
+Plunk is a monorepo with three main runtime processes:
+
+```
+┌──────────────────────────────────────────────┐
+│                  Your App                    │
+│         POST /v1/send  POST /v1/track        │
+└──────────────────┬───────────────────────────┘
+                   │ HTTPS
+┌──────────────────▼───────────────────────────┐
+│              API Server                      │
+│  (Express.js — handles all REST endpoints)   │
+└────────────────┬─────────────────────────────┘
+                 │ BullMQ (Redis)
+┌────────────────▼─────────────────────────────┐
+│              Worker Process                  │
+│  (Processes email, campaign, workflow queues)│
+└────────────────┬─────────────────────────────┘
+                 │
+┌────────────────▼─────────────────────────────┐
+│               AWS SES                        │
+│        (Delivers emails to inboxes)          │
+└──────────────────────────────────────────────┘
+```
+
+| Component | Role |
+|---|---|
+| **API server** | Handles all REST requests. Validates input, writes to Postgres, enqueues jobs via BullMQ. |
+| **Worker process** | Consumes jobs from Redis queues. Calls AWS SES, runs workflow logic, processes campaigns. Runs separately so it can scale independently. |
+| **Dashboard (web)** | Next.js UI for managing contacts, templates, campaigns, workflows, domains, and settings. |
+| **PostgreSQL** | Persistent storage for contacts, events, emails, templates, campaigns, and settings. |
+| **Redis** | Job queue backing store (BullMQ) and general caching. |
+| **AWS SES** | Email delivery backend. Plunk uses SES send APIs and ingests bounce/complaint events via SES configuration sets. |
+
+<Note>
+  API requests that trigger email sending are non-blocking. The API returns a response immediately after enqueueing the job. The worker delivers the email asynchronously. This design keeps API response times fast even under load.
+</Note>
+
+## API keys
+
+Each Plunk project has two API keys:
+
+- **Secret key (`sk_*`)** — Full API access. Required for `/v1/send` and all dashboard endpoints. Keep this server-side only.
+- **Public key (`pk_*`)** — Limited to `/v1/track` only. Safe to use in client-side JavaScript.
+
+See [API Keys](/guides/api-keys) for details on key management.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get your API key and send your first email in minutes.
+  </Card>
+  <Card title="Self-Hosting" icon="server" href="/self-hosting/introduction">
+    Deploy Plunk on your own infrastructure with Docker and AWS SES.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Browse the full REST API documentation.
+  </Card>
+  <Card title="Verify your domain" icon="globe" href="/guides/verifying-domains">
+    Configure DNS records to send from your own domain.
+  </Card>
+</CardGroup>

@@ -1,0 +1,104 @@
+---
+title: "Self-hosting introduction"
+description: "Run Plunk on your own infrastructure using Docker, Docker Compose, and AWS SES."
+---
+
+Self-hosting Plunk means you run the entire platform — the API, dashboard, email worker, database, file storage, and notification server — on your own servers. You bring your own AWS SES account for email delivery. Everything else is bundled in a single Docker image.
+
+## Requirements
+
+Before you start, make sure you have the following:
+
+- **Docker** and **Docker Compose** installed on your server
+- An **AWS account** with SES available in your target region
+- A **domain name** with DNS control, so you can create the required subdomains
+
+## Quick start
+
+<Steps>
+  <Step title="Download docker-compose.yml">
+    Fetch the official Compose file directly from GitHub:
+
+    ```bash
+    curl -O https://raw.githubusercontent.com/useplunk/plunk/next/docker-compose.yml
+    ```
+  </Step>
+  <Step title="Configure environment variables">
+    Copy the example env file and fill in your values:
+
+    ```bash
+    curl -O https://raw.githubusercontent.com/useplunk/plunk/next/.env.self-host.example
+    cp .env.self-host.example .env
+    ```
+
+    At minimum you need to set:
+
+    ```bash
+    JWT_SECRET="$(openssl rand -base64 32)"
+    DB_PASSWORD="your-secure-password"
+
+    API_DOMAIN="api.yourdomain.com"
+    DASHBOARD_DOMAIN="app.yourdomain.com"
+    USE_HTTPS="true"
+
+    AWS_SES_REGION="us-east-1"
+    AWS_SES_ACCESS_KEY_ID="AKIA..."
+    AWS_SES_SECRET_ACCESS_KEY="..."
+    SES_CONFIGURATION_SET="plunk-tracking"
+    ```
+
+    See [Environment variables](/self-hosting/environment-variables) for the full reference.
+  </Step>
+  <Step title="Start the stack">
+    ```bash
+    docker compose up -d
+    ```
+
+    The stack starts PostgreSQL and Redis first, waits for their health checks to pass, then starts the Plunk application container. Database migrations run automatically on startup.
+  </Step>
+</Steps>
+
+## Domain setup
+
+Plunk uses subdomain-based routing. Create DNS A records (or CNAME records if behind a load balancer) for each subdomain pointing to your server's IP address.
+
+| Subdomain | Service | Required |
+|-----------|---------|----------|
+| `api.yourdomain.com` | API server | Yes |
+| `app.yourdomain.com` | Dashboard | Yes |
+| `www.yourdomain.com` | Landing page | No |
+| `docs.yourdomain.com` | Documentation site | No |
+| `smtp.yourdomain.com` | SMTP relay | No |
+
+<Note>
+  You need a reverse proxy (Traefik, nginx, Caddy) in front of the Plunk container to terminate TLS and route subdomains. The container's nginx listens on port 80 and routes by `Host` header internally. Point your reverse proxy at port 80 of the `plunk` container.
+</Note>
+
+## Services in the stack
+
+The Docker Compose file runs five containers:
+
+| Container | Image | Purpose |
+|-----------|-------|---------|
+| `plunk` | `ghcr.io/useplunk/plunk:latest` | All application services: API server, BullMQ worker, Next.js dashboard, landing page, documentation site, and optional SMTP relay — all managed by PM2 behind nginx |
+| `postgres` | `postgres:16-alpine` | Primary database |
+| `redis` | `redis:7-alpine` | Queue backend for BullMQ email and workflow jobs |
+| `minio` | `minio/minio:latest` | S3-compatible file storage for uploads |
+| `ntfy` | `binwiederhier/ntfy:latest` | Internal system notifications |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Docker deployment" icon="docker" href="/self-hosting/docker">
+    Understand the container internals, runtime environment injection, SMTP TLS setup, and how to upgrade.
+  </Card>
+  <Card title="Environment variables" icon="sliders" href="/self-hosting/environment-variables">
+    Complete reference for every configuration variable, organized by category.
+  </Card>
+  <Card title="Email setup" icon="envelope" href="/self-hosting/email-setup">
+    Step-by-step AWS SES configuration: IAM credentials, configuration sets, SNS topics, and bounce handling.
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/overview">
+    Explore the REST API once your instance is running.
+  </Card>
+</CardGroup>

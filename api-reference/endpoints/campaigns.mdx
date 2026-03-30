@@ -1,0 +1,385 @@
+---
+title: 'Campaigns'
+description: 'Create, manage, and send bulk email campaigns'
+---
+
+Campaigns are one-time or scheduled bulk emails sent to a defined audience. You can target all subscribed contacts, a saved segment, or a dynamically-filtered audience.
+
+<Note>
+  All campaign endpoints require a **secret key** (`sk_*`). The `from` address must belong to a verified domain on your project.
+</Note>
+
+---
+
+## List campaigns
+
+`GET /campaigns`
+
+Returns a paginated list of campaigns for the authenticated project.
+
+### Query parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number (1-indexed).
+</ParamField>
+
+<ParamField query="pageSize" type="number" default="20">
+  Number of campaigns per page.
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by status. One of `DRAFT`, `SCHEDULED`, `SENDING`, `SENT`, or `CANCELLED`.
+</ParamField>
+
+### Response
+
+<ResponseField name="campaigns" type="array">Array of campaign objects.</ResponseField>
+<ResponseField name="page" type="integer">Current page.</ResponseField>
+<ResponseField name="pageSize" type="integer">Items per page.</ResponseField>
+<ResponseField name="total" type="integer">Total matching campaigns.</ResponseField>
+<ResponseField name="totalPages" type="integer">Total pages.</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url 'https://next-api.useplunk.com/campaigns?status=DRAFT' \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Create campaign
+
+`POST /campaigns`
+
+Creates a new campaign in `DRAFT` status.
+
+### Body parameters
+
+<ParamField body="name" type="string" required>
+  Internal campaign name.
+</ParamField>
+
+<ParamField body="subject" type="string" required>
+  Email subject line.
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  HTML email body.
+</ParamField>
+
+<ParamField body="from" type="string" required>
+  Sender email address. Must be from a verified domain on your project.
+</ParamField>
+
+<ParamField body="audienceType" type="string" required>
+  Who to send this campaign to. One of:
+
+  - `ALL` — all subscribed contacts in the project
+  - `SEGMENT` — contacts in a specific saved segment (requires `segmentId`)
+  - `FILTERED` — contacts matching inline filter conditions (requires `audienceCondition`)
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional internal description.
+</ParamField>
+
+<ParamField body="fromName" type="string">
+  Sender display name.
+</ParamField>
+
+<ParamField body="replyTo" type="string">
+  Reply-to email address.
+</ParamField>
+
+<ParamField body="segmentId" type="string">
+  Required when `audienceType` is `SEGMENT`. The ID of the segment to target.
+</ParamField>
+
+<ParamField body="audienceCondition" type="object">
+  Required when `audienceType` is `FILTERED`. A `FilterCondition` object defining the dynamic audience rules. See the [Segments](/api-reference/endpoints/segments) documentation for the condition schema.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` on success.</ResponseField>
+<ResponseField name="data" type="object">
+  <Expandable title="Campaign properties">
+    <ResponseField name="id" type="string">Campaign ID.</ResponseField>
+    <ResponseField name="name" type="string">Campaign name.</ResponseField>
+    <ResponseField name="subject" type="string">Email subject.</ResponseField>
+    <ResponseField name="status" type="string">Campaign status (`DRAFT`, `SCHEDULED`, `SENDING`, `SENT`).</ResponseField>
+    <ResponseField name="audienceType" type="string">Audience type (`ALL`, `SEGMENT`, `FILTERED`).</ResponseField>
+    <ResponseField name="scheduledAt" type="string">Scheduled send time (ISO 8601), if applicable.</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601 creation timestamp.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/campaigns \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "March Newsletter",
+    "subject": "What'\''s new this month",
+    "body": "<h1>March Updates</h1><p>Here'\''s what we shipped this month...</p>",
+    "from": "news@myapp.com",
+    "fromName": "My App",
+    "audienceType": "ALL"
+  }'
+```
+
+---
+
+## Get campaign
+
+`GET /campaigns/:id`
+
+Retrieves a single campaign by ID.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID.
+</ParamField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Update campaign
+
+`PUT /campaigns/:id`
+
+Updates a campaign. Only campaigns in `DRAFT` or `SCHEDULED` status can be updated.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="name" type="string">Campaign name.</ParamField>
+<ParamField body="description" type="string">Campaign description.</ParamField>
+<ParamField body="subject" type="string">Email subject line.</ParamField>
+<ParamField body="body" type="string">HTML email body.</ParamField>
+<ParamField body="from" type="string">Sender email (must be a verified domain).</ParamField>
+<ParamField body="fromName" type="string">Sender display name.</ParamField>
+<ParamField body="replyTo" type="string">Reply-to email address.</ParamField>
+<ParamField body="audienceType" type="string">Audience type: `ALL`, `SEGMENT`, or `FILTERED`.</ParamField>
+<ParamField body="segmentId" type="string">Segment ID (required when changing `audienceType` to `SEGMENT`).</ParamField>
+<ParamField body="audienceCondition" type="object">Audience filter conditions (required when changing `audienceType` to `FILTERED`).</ParamField>
+
+```bash Example
+curl --request PUT \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "subject": "What'\''s new in March 🚀",
+    "audienceType": "SEGMENT",
+    "segmentId": "clx_seg_xyz789"
+  }'
+```
+
+---
+
+## Send or schedule campaign
+
+`POST /campaigns/:id/send`
+
+Sends the campaign immediately or schedules it for future delivery.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="scheduledFor" type="string">
+  ISO 8601 timestamp for when to send the campaign. Omit this field (or set it to `null`) to send immediately.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` on success.</ResponseField>
+<ResponseField name="data" type="object">Updated campaign object.</ResponseField>
+<ResponseField name="message" type="string">Human-readable status message.</ResponseField>
+
+<CodeGroup>
+
+```bash Send immediately
+curl --request POST \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123/send \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{}'
+```
+
+```bash Schedule for later
+curl --request POST \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123/send \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "scheduledFor": "2024-03-01T09:00:00.000Z"
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## Cancel campaign
+
+`POST /campaigns/:id/cancel`
+
+Cancels a campaign that is in `SCHEDULED` status.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID.
+</ParamField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123/cancel \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Send test email
+
+`POST /campaigns/:id/test`
+
+Sends a test email for the campaign to a specified address so you can preview it before sending to the full audience.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="email" type="string" required>
+  Email address to send the test to.
+</ParamField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123/test \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "email": "preview@mycompany.com"
+  }'
+```
+
+---
+
+## Get campaign stats
+
+`GET /campaigns/:id/stats`
+
+Returns delivery and engagement analytics for a sent campaign.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` on success.</ResponseField>
+<ResponseField name="data" type="object">
+  <Expandable title="Stats properties">
+    <ResponseField name="delivered" type="integer">Number of successfully delivered emails.</ResponseField>
+    <ResponseField name="opens" type="integer">Number of unique email opens.</ResponseField>
+    <ResponseField name="clicks" type="integer">Number of unique link clicks.</ResponseField>
+    <ResponseField name="bounces" type="integer">Number of bounced emails.</ResponseField>
+    <ResponseField name="complaints" type="integer">Number of spam complaints.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123/stats \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+{
+  "success": true,
+  "data": {
+    "delivered": 4821,
+    "opens": 1203,
+    "clicks": 347,
+    "bounces": 12,
+    "complaints": 2
+  }
+}
+```
+
+---
+
+## Delete campaign
+
+`DELETE /campaigns/:id`
+
+Permanently deletes a campaign.
+
+<Warning>
+  Only campaigns in `DRAFT` or `CANCELLED` status can be deleted. You cannot delete a campaign that is `SENDING` or `SENT`.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID.
+</ParamField>
+
+### Response
+
+Returns `{ "success": true, "message": "Campaign deleted successfully" }` on success.
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Duplicate campaign
+
+`POST /campaigns/:id/duplicate`
+
+Creates a copy of the campaign in `DRAFT` status with the same content and settings.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The campaign ID to duplicate.
+</ParamField>
+
+### Response
+
+Returns the new campaign object with HTTP `201`.
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/campaigns/clx_cmp_abc123/duplicate \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```

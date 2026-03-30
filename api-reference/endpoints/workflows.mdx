@@ -1,0 +1,424 @@
+---
+title: 'Workflows'
+description: 'Build automated multi-step email sequences triggered by events'
+---
+
+Workflows are event-triggered automations. When a specified event is tracked for a contact, the workflow starts an execution for that contact and processes each step in sequence.
+
+<Note>
+  All workflow endpoints require a **secret key** (`sk_*`).
+</Note>
+
+---
+
+## Workflow structure
+
+A workflow consists of:
+
+- **Trigger** — the event name that starts the workflow (e.g. `signed_up`)
+- **Steps** — an ordered set of actions to perform (send email, wait, conditional branch, etc.)
+- **Transitions** — connections between steps that optionally include conditions
+
+### Step types
+
+| Type | Description |
+|---|---|
+| `TRIGGER` | Entry point created automatically. Not added manually. |
+| `SEND_EMAIL` | Sends an email using a saved template. |
+| `DELAY` | Pauses the execution for a fixed duration before proceeding. |
+| `WAIT_FOR_EVENT` | Pauses until a specific event is tracked for the contact, or a timeout elapses. |
+| `CONDITION` | Branches the execution based on a boolean expression evaluated against contact data or event data. |
+| `WEBHOOK` | Sends an HTTP request to an external URL with contact and event data. |
+| `UPDATE_CONTACT` | Updates the contact's data fields with specified key-value pairs. |
+| `EXIT` | Terminates the workflow execution early for the contact. |
+
+### Execution statuses
+
+| Status | Description |
+|---|---|
+| `RUNNING` | The execution is actively processing steps. |
+| `WAITING` | The execution is paused on a `DELAY` or `WAIT_FOR_EVENT` step. |
+| `COMPLETED` | The execution finished normally. |
+| `CANCELLED` | The execution was manually cancelled. |
+| `FAILED` | The execution encountered an error. |
+
+---
+
+## List workflows
+
+`GET /workflows`
+
+Returns a paginated list of workflows for the authenticated project.
+
+### Query parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number (1-indexed).
+</ParamField>
+
+<ParamField query="pageSize" type="number" default="20">
+  Items per page. Maximum `100`.
+</ParamField>
+
+<ParamField query="search" type="string">
+  Filter workflows by name.
+</ParamField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/workflows \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Create workflow
+
+`POST /workflows`
+
+Creates a new workflow. The workflow is created in a disabled state — set `enabled: true` to activate it immediately.
+
+### Body parameters
+
+<ParamField body="name" type="string" required>
+  Internal workflow name.
+</ParamField>
+
+<ParamField body="eventName" type="string" required>
+  The event name that triggers this workflow (e.g. `signed_up`, `purchased`). When this event is tracked for a contact, a new execution starts.
+</ParamField>
+
+<ParamField body="enabled" type="boolean" default="false">
+  Whether the workflow is active and will start new executions. Set to `true` to enable on creation.
+</ParamField>
+
+<ParamField body="allowReentry" type="boolean" default="false">
+  When `true`, a contact can enter the workflow again even if they have a previous completed or active execution. When `false`, a contact only runs through the workflow once.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description.
+</ParamField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/workflows \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Welcome Sequence",
+    "eventName": "signed_up",
+    "enabled": true,
+    "allowReentry": false
+  }'
+```
+
+---
+
+## Get workflow
+
+`GET /workflows/:id`
+
+Retrieves a single workflow with all of its steps and transitions.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The workflow ID.
+</ParamField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/workflows/clx_wf_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Update workflow
+
+`PATCH /workflows/:id`
+
+Updates workflow settings. To add or remove steps, use the step-specific endpoints below.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The workflow ID.
+</ParamField>
+
+### Body parameters
+
+<ParamField body="name" type="string">Workflow name.</ParamField>
+<ParamField body="description" type="string">Workflow description.</ParamField>
+<ParamField body="enabled" type="boolean">Enable or disable the workflow. Disabling stops new executions but does not cancel in-progress ones.</ParamField>
+<ParamField body="allowReentry" type="boolean">Allow contacts to re-enter the workflow.</ParamField>
+<ParamField body="triggerType" type="string">Trigger type (advanced — typically `EVENT`).</ParamField>
+<ParamField body="triggerConfig" type="object">Trigger configuration object (advanced).</ParamField>
+
+```bash Example
+curl --request PATCH \
+  --url https://next-api.useplunk.com/workflows/clx_wf_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "enabled": false
+  }'
+```
+
+---
+
+## Delete workflow
+
+`DELETE /workflows/:id`
+
+Permanently deletes a workflow.
+
+<Warning>
+  Deleting a workflow cancels all in-progress executions immediately. This action cannot be undone.
+</Warning>
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The workflow ID.
+</ParamField>
+
+Returns `204 No Content` on success.
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/workflows/clx_wf_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## List executions
+
+`GET /workflows/:id/executions`
+
+Returns a paginated list of executions for a workflow.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>
+  The workflow ID.
+</ParamField>
+
+### Query parameters
+
+<ParamField query="page" type="number" default="1">
+  Page number.
+</ParamField>
+
+<ParamField query="pageSize" type="number" default="20">
+  Items per page. Maximum `100`.
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by execution status. One of `PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`, `FAILED`.
+</ParamField>
+
+### Response
+
+<ResponseField name="executions" type="array">
+  Array of execution objects.
+
+  <Expandable title="Execution properties">
+    <ResponseField name="id" type="string">Execution ID.</ResponseField>
+    <ResponseField name="workflowId" type="string">Parent workflow ID.</ResponseField>
+    <ResponseField name="contactId" type="string">Contact the execution is running for.</ResponseField>
+    <ResponseField name="status" type="string">Execution status (`PENDING`, `RUNNING`, `COMPLETED`, `CANCELLED`, `FAILED`).</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601 timestamp when the execution started.</ResponseField>
+    <ResponseField name="updatedAt" type="string">ISO 8601 timestamp of the last status change.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url 'https://next-api.useplunk.com/workflows/clx_wf_abc123/executions?status=RUNNING' \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+{
+  "executions": [
+    {
+      "id": "clx_exec_xyz789",
+      "workflowId": "clx_wf_abc123",
+      "contactId": "clx_contact_def456",
+      "status": "RUNNING",
+      "createdAt": "2024-01-15T09:00:00.000Z",
+      "updatedAt": "2024-01-15T09:05:00.000Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "total": 1
+}
+```
+
+---
+
+## Cancel execution
+
+`DELETE /workflows/:id/executions/:executionId`
+
+Cancels a specific in-progress execution.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>The workflow ID.</ParamField>
+<ParamField path="executionId" type="string" required>The execution ID to cancel.</ParamField>
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/workflows/clx_wf_abc123/executions/clx_exec_xyz789 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Cancel all executions
+
+`POST /workflows/:id/executions/cancel-all`
+
+Cancels all active executions (`RUNNING` or `WAITING`) for a workflow. Use this before editing a live workflow.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>The workflow ID.</ParamField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/workflows/clx_wf_abc123/executions/cancel-all \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Add step
+
+`POST /workflows/:id/steps`
+
+Adds a new step to a workflow. Steps are connected via transitions.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>The workflow ID.</ParamField>
+
+### Body parameters
+
+<ParamField body="type" type="string" required>
+  Step type. One of `SEND_EMAIL`, `DELAY`, `WAIT_FOR_EVENT`, `CONDITION`, `WEBHOOK`, `UPDATE_CONTACT`, `EXIT`.
+</ParamField>
+<ParamField body="name" type="string" required>
+  Display name for the step.
+</ParamField>
+<ParamField body="position" type="object" required>
+  Visual position in the workflow editor: `{ "x": 100, "y": 200 }`.
+</ParamField>
+<ParamField body="config" type="object" required>
+  Step configuration. Shape varies by type:
+  - `SEND_EMAIL`: `{ "templateId": "uuid" }`
+  - `DELAY`: `{ "amount": 24, "unit": "hours" }`
+  - `WAIT_FOR_EVENT`: `{ "eventName": "email.clicked", "timeout": 86400 }`
+  - `CONDITION`: `{ "field": "contact.data.plan", "operator": "equals", "value": "pro" }`
+  - `WEBHOOK`: `{ "url": "https://...", "method": "POST", "headers": {} }`
+  - `UPDATE_CONTACT`: `{ "data": { "key": "value" } }`
+  - `EXIT`: `{ "reason": "optional reason" }`
+</ParamField>
+<ParamField body="templateId" type="string">
+  Template ID shorthand for `SEND_EMAIL` steps. Equivalent to setting it in `config`.
+</ParamField>
+<ParamField body="autoConnect" type="boolean">
+  When `true`, automatically creates a transition from the last step to this new step.
+</ParamField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/workflows/clx_wf_abc123/steps \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "type": "SEND_EMAIL",
+    "name": "Welcome email",
+    "position": { "x": 100, "y": 300 },
+    "config": { "templateId": "clx_tmpl_abc123" },
+    "autoConnect": true
+  }'
+```
+
+---
+
+## Update step
+
+`PATCH /workflows/:id/steps/:stepId`
+
+Updates a workflow step's name, position, or configuration.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>The workflow ID.</ParamField>
+<ParamField path="stepId" type="string" required>The step ID to update.</ParamField>
+
+### Body parameters
+
+<ParamField body="name" type="string">New display name.</ParamField>
+<ParamField body="position" type="object">New visual position: `{ "x": number, "y": number }`.</ParamField>
+<ParamField body="config" type="object">Updated step configuration.</ParamField>
+<ParamField body="templateId" type="string">Updated template ID (for `SEND_EMAIL` steps).</ParamField>
+
+---
+
+## Delete step
+
+`DELETE /workflows/:id/steps/:stepId`
+
+Removes a step from the workflow. Any transitions connected to this step are also removed.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>The workflow ID.</ParamField>
+<ParamField path="stepId" type="string" required>The step ID to delete.</ParamField>
+
+Returns `204 No Content` on success.
+
+---
+
+## Create transition
+
+`POST /workflows/:id/transitions`
+
+Creates a directed connection between two steps.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>The workflow ID.</ParamField>
+
+### Body parameters
+
+<ParamField body="fromStepId" type="string" required>ID of the source step.</ParamField>
+<ParamField body="toStepId" type="string" required>ID of the destination step.</ParamField>
+<ParamField body="condition" type="object">
+  Optional condition that must be true for this transition to be followed. Used with `CONDITION` steps to define branches.
+</ParamField>
+<ParamField body="priority" type="number">
+  Order priority when multiple transitions exist from the same step. Lower values are evaluated first.
+</ParamField>
+
+---
+
+## Delete transition
+
+`DELETE /workflows/:id/transitions/:transitionId`
+
+Removes a transition between two steps.
+
+### Path parameters
+
+<ParamField path="id" type="string" required>The workflow ID.</ParamField>
+<ParamField path="transitionId" type="string" required>The transition ID to delete.</ParamField>
+
+Returns `204 No Content` on success.

@@ -1,0 +1,295 @@
+---
+title: 'Errors'
+description: 'HTTP status codes, machine-readable error codes, and guidance for handling errors from the Plunk API.'
+---
+
+## Error response format
+
+All errors return a consistent JSON envelope. Check the `success` field first, then inspect `error` for details.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "statusCode": 422,
+    "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+    "errors": [
+      {
+        "field": "email",
+        "message": "Invalid email",
+        "code": "invalid_string"
+      }
+    ],
+    "suggestion": "One or more fields have incorrect types."
+  },
+  "timestamp": "2025-11-30T10:30:00.000Z"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `success` | boolean | Always `false` for error responses |
+| `error.code` | string | Machine-readable error code (see reference below) |
+| `error.message` | string | Human-readable description |
+| `error.statusCode` | number | HTTP status code |
+| `error.requestId` | string | Unique request identifier — provide this when contacting support |
+| `error.errors` | array | Field-level validation details (present on `VALIDATION_ERROR` only) |
+| `error.details` | object | Additional context, varies by error type |
+| `error.suggestion` | string | Guidance for resolving the error |
+| `timestamp` | string | ISO 8601 timestamp of when the error occurred |
+
+<Tip>
+  Always check `error.suggestion` first — it usually tells you exactly what to fix. Include `error.requestId` in any support request.
+</Tip>
+
+## HTTP status codes
+
+| Status | Meaning |
+|---|---|
+| `400 Bad Request` | Malformed request or invalid parameters |
+| `401 Unauthorized` | Missing or invalid API key |
+| `403 Forbidden` | Project disabled or wrong key type for this endpoint |
+| `404 Not Found` | The requested resource does not exist |
+| `422 Unprocessable Entity` | Validation failed — check the `errors` array for field-level details |
+| `429 Too Many Requests` | Rate limit exceeded |
+| `500 Internal Server Error` | Unexpected server error — contact support with your `requestId` |
+
+## Error codes reference
+
+### Authentication and authorization
+
+| Code | Status | Description |
+|---|---|---|
+| `MISSING_AUTH` | 401 | `Authorization` header is absent or not in `Bearer <key>` format |
+| `UNAUTHORIZED` | 401 | General authentication failure |
+| `INVALID_CREDENTIALS` | 401 | Login credentials are incorrect |
+| `INVALID_API_KEY` | 401 | API key is invalid, not found, or the wrong type for this endpoint |
+| `FORBIDDEN` | 403 | Access denied |
+| `PROJECT_ACCESS_DENIED` | 403 | The key does not have access to the requested project |
+| `PROJECT_DISABLED` | 403 | The project has been disabled — write operations are blocked |
+
+### Validation and input errors
+
+| Code | Status | Description |
+|---|---|---|
+| `BAD_REQUEST` | 400 | General request error |
+| `INVALID_REQUEST_BODY` | 400 | Request body is malformed or not valid JSON |
+| `VALIDATION_ERROR` | 422 | One or more fields failed validation — check the `errors` array |
+| `MISSING_REQUIRED_FIELD` | 422 | A required field is absent |
+| `INVALID_EMAIL` | 422 | Email address format is invalid |
+
+### Resource errors
+
+| Code | Status | Description |
+|---|---|---|
+| `RESOURCE_NOT_FOUND` | 404 | Generic resource not found |
+| `CONTACT_NOT_FOUND` | 404 | Contact does not exist in this project |
+| `TEMPLATE_NOT_FOUND` | 404 | Template does not exist in this project |
+| `CAMPAIGN_NOT_FOUND` | 404 | Campaign does not exist in this project |
+| `WORKFLOW_NOT_FOUND` | 404 | Workflow does not exist in this project |
+| `CONFLICT` | 409 | Resource conflict, such as a duplicate |
+
+### Rate limiting and billing
+
+| Code | Status | Description |
+|---|---|---|
+| `RATE_LIMIT_EXCEEDED` | 429 | Request rate limit exceeded |
+| `BILLING_LIMIT_EXCEEDED` | 402 | Usage limit for your billing plan has been reached |
+| `UPGRADE_REQUIRED` | 402 | This feature requires a plan upgrade |
+
+### Server errors
+
+| Code | Status | Description |
+|---|---|---|
+| `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error |
+| `DATABASE_ERROR` | 500 | Database operation failed |
+| `EXTERNAL_SERVICE_ERROR` | 500 | A dependent external service (such as AWS SES) is unavailable |
+
+## Common error examples
+
+### Validation error
+
+Returned when one or more request fields fail schema validation. Inspect the `errors` array for field-level details.
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "statusCode": 422,
+    "requestId": "abc-123",
+    "errors": [
+      {
+        "field": "event",
+        "message": "Required",
+        "code": "invalid_type"
+      },
+      {
+        "field": "email",
+        "message": "Invalid email",
+        "code": "invalid_string"
+      }
+    ],
+    "suggestion": "One or more fields have incorrect types. Check that strings are quoted, numbers are unquoted, and booleans are true/false."
+  },
+  "timestamp": "2025-11-30T10:30:00.000Z"
+}
+```
+
+### Resource not found
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "TEMPLATE_NOT_FOUND",
+    "message": "Template with ID \"tpl_abc123\" was not found",
+    "statusCode": 404,
+    "requestId": "abc-123",
+    "details": {
+      "resource": "Template",
+      "id": "tpl_abc123"
+    },
+    "suggestion": "Ensure the template ID is correct and belongs to your project. You can list available templates via the API."
+  },
+  "timestamp": "2025-11-30T10:30:00.000Z"
+}
+```
+
+### Rate limit exceeded
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Rate limit exceeded. Please try again later.",
+    "statusCode": 429,
+    "requestId": "abc-123",
+    "suggestion": "You have exceeded the rate limit. Wait a moment before retrying, or upgrade your plan."
+  },
+  "timestamp": "2025-11-30T10:30:00.000Z"
+}
+```
+
+## Handling errors in code
+
+<CodeGroup>
+
+```typescript TypeScript
+const response = await fetch('https://next-api.useplunk.com/v1/track', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${publicKey}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ event: 'purchase', email: 'user@example.com' }),
+});
+
+const data = await response.json();
+
+if (!data.success) {
+  const { code, message, suggestion, requestId, errors } = data.error;
+
+  console.error(`[${code}] ${message}`);
+  if (suggestion) console.log('Suggestion:', suggestion);
+  console.log('Request ID:', requestId);
+
+  if (code === 'VALIDATION_ERROR') {
+    errors?.forEach(err => console.log(`  ${err.field}: ${err.message}`));
+  }
+
+  if (code === 'RATE_LIMIT_EXCEEDED') {
+    // Implement exponential backoff before retrying
+  }
+}
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://next-api.useplunk.com/v1/track',
+    headers={
+        'Authorization': f'Bearer {public_key}',
+        'Content-Type': 'application/json',
+    },
+    json={'event': 'purchase', 'email': 'user@example.com'},
+)
+
+data = response.json()
+
+if not data.get('success'):
+    error = data['error']
+    print(f"[{error['code']}] {error['message']}")
+
+    if 'suggestion' in error:
+        print(f"Suggestion: {error['suggestion']}")
+
+    print(f"Request ID: {error['requestId']}")
+
+    if error['code'] == 'VALIDATION_ERROR':
+        for err in error.get('errors', []):
+            print(f"  {err['field']}: {err['message']}")
+```
+
+</CodeGroup>
+
+## Debugging with request IDs
+
+Every request — successful or not — gets a unique `requestId`. It appears in:
+
+- The `error.requestId` field of error responses
+- The `X-Request-ID` response header (present on all responses)
+
+Log the request ID in your application so you can correlate your own logs with Plunk's logs when investigating issues.
+
+```javascript
+const response = await fetch('https://next-api.useplunk.com/v1/send', { /* ... */ });
+
+const requestId = response.headers.get('X-Request-ID');
+console.log('Request ID:', requestId);
+
+const data = await response.json();
+if (!data.success) {
+  console.error('Error:', data.error.message, '| Request ID:', data.error.requestId);
+}
+```
+
+When contacting support, include the `requestId`. This lets the Plunk team trace your request through the full system — API, database, queue, and worker — without needing additional information from you.
+
+## Troubleshooting by status code
+
+### 401 Unauthorized
+
+- Verify the API key is copied correctly with no leading or trailing spaces.
+- Check you are using the right key type: `sk_` for all endpoints, `pk_` only for `/v1/track`.
+- Ensure the `Authorization` header uses the exact format `Bearer YOUR_API_KEY`.
+- Confirm the key has not been deleted or regenerated in your project settings.
+
+### 422 Unprocessable Entity
+
+- Read the `errors` array — each entry names the failing field and describes the problem.
+- Confirm all required fields are present in the request body.
+- Check field types: strings must be quoted, numbers must be unquoted, booleans must be `true` or `false`.
+
+### 404 Not Found
+
+- Confirm the resource ID is correct.
+- Verify the resource belongs to the project associated with your API key.
+- Check the resource has not been deleted.
+
+### 429 Too Many Requests
+
+- Implement exponential backoff: wait 1 s, then 2 s, then 4 s before retrying.
+- Reduce request frequency or batch operations.
+- Plunk queues bulk operations automatically — avoid sending them synchronously.
+
+### 500 Internal Server Error
+
+- Note the `requestId` from the error response.
+- Wait a moment and retry — most 500 errors are transient.
+- If the error persists, contact support and include the `requestId`.

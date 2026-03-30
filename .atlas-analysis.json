@@ -1,24 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "Plunk",
+  "projectType": "saas",
+  "projectName": "Plunk",
+  "projectDescription": "An open-source email platform built on AWS SES for sending transactional emails, managing campaigns, automating workflows, and organizing contacts.",
   "theme": "luma",
-  "colors": {
-    "primary": "#7c7c7c",
-    "light": "#0c0c0c",
-    "dark": "#d6d6d6"
-  },
-  "favicon": "https://media.brand.dev/64700892-0b07-4fd5-a43d-05c7c3d93e16.jpg",
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/useplunk/plunk"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/useplunk/plunk"
-    }
-  },
+  "primaryColor": "#7c7c7c",
+  "lightColor": "#0c0c0c",
+  "darkColor": "#d6d6d6",
   "navigation": {
     "tabs": [
       {
@@ -91,5 +78,39 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Transactional email sending via REST API with template support and variable substitution",
+    "Email campaigns with audience segmentation and scheduling",
+    "Automated workflow builder with triggers, delays, conditions, and webhook steps",
+    "Contact management with custom data fields and dynamic/static segments",
+    "Real-time analytics for opens, clicks, bounces, and engagement",
+    "Custom domain verification with DKIM, SPF, and MX record support",
+    "Built-in event tracking system for triggering automations",
+    "SMTP relay server for sending emails via standard SMTP protocol",
+    "Self-hostable via Docker with AWS SES backend",
+    "Inbound email reception and processing"
+  ],
+  "publicApiSurface": [
+    "POST /v1/send — Send transactional email(s)",
+    "POST /v1/track — Track event for a contact",
+    "GET /contacts — List contacts",
+    "POST /contacts — Create contact",
+    "GET /contacts/:id — Get contact",
+    "PATCH /contacts/:id — Update contact",
+    "DELETE /contacts/:id — Delete contact",
+    "GET /templates — List templates",
+    "POST /templates — Create template",
+    "GET /campaigns — List campaigns",
+    "POST /campaigns — Create campaign",
+    "POST /campaigns/:id/send — Send or schedule campaign",
+    "GET /segments — List segments",
+    "POST /segments — Create segment",
+    "POST /segments/:id/members — Add contacts to static segment",
+    "GET /workflows — List workflows",
+    "POST /workflows — Create workflow",
+    "GET /events — List events",
+    "GET /domains — List domains",
+    "POST /domains — Add domain"
+  ]
 }

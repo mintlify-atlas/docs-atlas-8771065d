@@ -1,0 +1,185 @@
+---
+title: "Workflows"
+description: "Build automated email sequences triggered by events — with delays, conditions, webhooks, and branching logic."
+keywords: ["workflows", "automation", "sequences", "triggers", "events", "conditions", "delays"]
+icon: "diagram-project"
+---
+
+Workflows are automated email sequences that run in response to events you send from your application. When a contact triggers the workflow's entry event, Plunk starts an execution and moves the contact through the configured steps — sending emails, waiting, evaluating conditions, calling webhooks, and updating contact data.
+
+## Prerequisites
+
+Before creating a workflow, you need:
+
+<CardGroup cols={2}>
+  <Card title="Events via /v1/track" icon="chart-line" href="/guides/tracking">
+    Workflows are triggered by events. Send events from your application using `POST /v1/track` to create or update contacts and fire the trigger.
+  </Card>
+  <Card title="Email templates" icon="file-code" href="/features/templates">
+    Send Email steps require a saved template. Create your templates before building the workflow.
+  </Card>
+</CardGroup>
+
+## Creating a workflow
+
+<Steps>
+  <Step title="Open Workflows in the dashboard">
+    Navigate to **Workflows** and click **Create Workflow**.
+  </Step>
+  <Step title="Set the trigger event">
+    Enter the event name that starts this workflow (e.g., `user.signup`, `purchase.completed`). The trigger event **cannot be changed** after the workflow is created — choose it carefully.
+
+    <Warning>
+      The trigger event name is permanent. If you need a different trigger, you must create a new workflow.
+    </Warning>
+  </Step>
+  <Step title="Configure workflow options">
+    - **Name** — internal label for the workflow
+    - **Description** — optional notes
+    - **Allow re-entry** — if enabled, a contact can enter the workflow again after completing or exiting a previous run
+  </Step>
+  <Step title="Add steps">
+    Use the visual editor to add steps to the workflow. Connect steps with transitions to define the execution path. See [Step types](#step-types) below.
+  </Step>
+  <Step title="Enable the workflow">
+    Toggle the workflow to **Enabled** when you are ready to accept incoming executions. Disabled workflows do not start new executions even when the trigger event is received.
+  </Step>
+</Steps>
+
+## Step types
+
+Each step in a workflow performs a specific action. Steps are connected by transitions, which can be conditional (for branching) or unconditional.
+
+| Step type | Description |
+|---|---|
+| **Send Email** | Sends an email to the contact using a specified template. Contact data and execution context are available as template variables. |
+| **Delay** | Pauses the execution for a fixed duration (e.g., 2 hours, 3 days) before proceeding. |
+| **Wait for Event** | Pauses the execution until the contact triggers a specific event. You can set a timeout — if the event is not received within the timeout window, the execution proceeds down the timeout branch. |
+| **Condition** | Evaluates a condition against contact data or event data and routes the execution to a `yes` or `no` branch. |
+| **Webhook** | Makes an HTTP POST request to an external URL with the contact and event data as the payload. |
+| **Update Contact** | Updates one or more fields on the contact's data record mid-execution. |
+| **Exit** | Terminates the execution immediately, optionally with a reason. |
+
+### Send Email step
+
+Attach a template to the step. The contact's data, reserved variables (`{{email}}`, `{{unsubscribeUrl}}`, etc.), and the execution context are all available for variable substitution in the template.
+
+<Note>
+The template type determines delivery behavior. A marketing template will not be sent to an unsubscribed contact. A transactional template is always delivered. See [Template types](/features/templates#template-types).
+</Note>
+
+### Delay step
+
+Configure a delay with an amount and unit:
+
+```json
+{
+  "amount": 24,
+  "unit": "hours"
+}
+```
+
+The execution is paused and scheduled to resume after the specified duration. The worker processes the scheduled resume automatically.
+
+### Wait for Event step
+
+The execution pauses until the contact fires a specific event. Configure the event name and an optional timeout:
+
+```json
+{
+  "eventName": "email.clicked",
+  "timeout": 86400
+}
+```
+
+- If the event arrives before the timeout, the execution follows the event-received branch.
+- If the timeout elapses first, the execution follows the timeout branch.
+
+### Condition step
+
+Evaluate a field on the contact or event data using comparison operators:
+
+```json
+{
+  "field": "contact.data.plan",
+  "operator": "equals",
+  "value": "pro"
+}
+```
+
+The step routes executions to a `yes` branch (condition met) or `no` branch (condition not met). Use conditions to branch the workflow based on contact properties or engagement behavior.
+
+### Webhook step
+
+Sends a POST request to a URL you control. The request body contains the contact and event data at the time of execution. Use this to integrate with external systems or trigger side effects in your application.
+
+For the full webhook payload format, see the [Webhooks guide](/guides/webhooks).
+
+### Update Contact step
+
+Modify fields on the contact record from within the workflow. Specify key-value pairs to set:
+
+```json
+{
+  "data": {
+    "onboarded": true,
+    "plan": "pro"
+  }
+}
+```
+
+Updates take effect immediately and are visible to subsequent steps in the same execution.
+
+### Exit step
+
+Terminates the execution early. Useful for short-circuiting the workflow when a condition means the remaining steps are unnecessary (e.g., the contact has already converted).
+
+## Managing executions
+
+The **Executions** tab on a workflow's detail page shows all active and completed executions with their current status.
+
+### Execution statuses
+
+| Status | Description |
+|---|---|
+| `RUNNING` | Actively executing through steps |
+| `WAITING` | Paused at a Delay or Wait for Event step |
+| `COMPLETED` | Finished all steps normally |
+| `EXITED` | Terminated by an Exit step |
+| `FAILED` | Stopped due to an error |
+| `CANCELLED` | Manually canceled |
+
+### Canceling executions
+
+You can cancel a single execution or all active executions for a workflow:
+
+<Tabs>
+  <Tab title="Cancel one execution">
+    ```bash
+    curl -X DELETE https://api.useplunk.com/workflows/{workflowId}/executions/{executionId} \
+      -H "Authorization: Bearer sk_live_..."
+    ```
+  </Tab>
+  <Tab title="Cancel all executions">
+    ```bash
+    curl -X POST https://api.useplunk.com/workflows/{workflowId}/executions/cancel-all \
+      -H "Authorization: Bearer sk_live_..."
+    ```
+  </Tab>
+</Tabs>
+
+## Workflow locking
+
+A workflow is **locked** while it has active executions. You cannot edit the workflow's steps or transitions while executions are running or waiting. To make changes:
+
+1. **Disable** the workflow to stop new executions from starting.
+2. Either **wait** for active executions to complete naturally, or **cancel all executions** to clear them immediately.
+3. Make your edits, then re-enable the workflow.
+
+<Warning>
+Canceling all executions is irreversible. Contacts whose executions are canceled will not receive any remaining steps in that run. If re-entry is disabled, they will not enter the workflow again even if the trigger event fires.
+</Warning>
+
+## API reference
+
+See the full endpoint reference at [Workflows](/api-reference/endpoints/workflows).

@@ -1,0 +1,194 @@
+---
+title: 'Events'
+description: 'List and query events tracked for your project'
+---
+
+Events represent discrete actions taken by contacts — either tracked manually via the `/v1/track` endpoint or generated automatically by Plunk. These endpoints let you query event history and discover which event names exist in your project.
+
+<Note>
+  All event endpoints require a **secret key** (`sk_*`).
+</Note>
+
+---
+
+## System (reserved) events
+
+Plunk automatically tracks the following events. They appear in event listings but **cannot be tracked manually** via `/v1/track` and cannot be deleted.
+
+| Event | Description |
+|---|---|
+| `email.sent` | An email was sent to a contact |
+| `email.delivery` | An email was successfully delivered |
+| `email.open` | A contact opened an email |
+| `email.click` | A contact clicked a link in an email |
+| `email.bounce` | An email bounced (hard or soft) |
+| `email.complaint` | A contact marked an email as spam |
+| `email.received` | An email was received at a verified domain |
+| `contact.subscribed` | A contact's subscription status changed to `true` |
+| `contact.unsubscribed` | A contact's subscription status changed to `false` |
+| `segment.<slug>.entry` | A contact entered a segment with membership tracking enabled |
+| `segment.<slug>.exit` | A contact left a segment with membership tracking enabled |
+
+These events can be used as workflow triggers and in segment filter conditions just like custom events.
+
+---
+
+## List events
+
+`GET /events`
+
+Returns a list of recent event records for the project. Optionally filter by event name.
+
+### Query parameters
+
+<ParamField query="eventName" type="string">
+  Filter results to events with this exact name.
+</ParamField>
+
+<ParamField query="limit" type="number" default="100">
+  Maximum number of events to return.
+</ParamField>
+
+### Response
+
+<ResponseField name="events" type="array">
+  Array of event records, ordered newest first.
+
+  <Expandable title="Event properties">
+    <ResponseField name="id" type="string">Event record ID.</ResponseField>
+    <ResponseField name="name" type="string">Event name.</ResponseField>
+    <ResponseField name="contactId" type="string">ID of the contact the event was tracked for.</ResponseField>
+    <ResponseField name="data" type="object">Custom data attached to the event at tracking time.</ResponseField>
+    <ResponseField name="createdAt" type="string">ISO 8601 timestamp when the event was recorded.</ResponseField>
+    <ResponseField name="contact" type="object">
+      <Expandable title="properties">
+        <ResponseField name="email" type="string">Contact's email address.</ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url 'https://next-api.useplunk.com/events?eventName=purchased&limit=50' \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+{
+  "events": [
+    {
+      "id": "clx_evt_abc123",
+      "name": "purchased",
+      "contactId": "clx_contact_xyz789",
+      "data": { "plan": "pro", "amount": 99 },
+      "createdAt": "2024-01-15T10:30:00.000Z",
+      "contact": { "email": "user@example.com" }
+    }
+  ]
+}
+```
+
+---
+
+## List event names
+
+`GET /events/names`
+
+Returns a deduplicated list of all event names that have been tracked for the project, ordered by frequency.
+
+This is useful for populating workflow trigger dropdowns or segment filter fields.
+
+### Response
+
+<ResponseField name="eventNames" type="string[]">
+  Array of unique event name strings, sorted by occurrence count descending.
+</ResponseField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/events/names \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+```json 200
+{
+  "eventNames": [
+    "signed_up",
+    "purchased",
+    "plan_upgraded",
+    "email.sent",
+    "email.open",
+    "contact.subscribed"
+  ]
+}
+```
+
+---
+
+## Get event stats
+
+`GET /events/stats`
+
+Returns aggregate event counts for the project, optionally filtered by date range.
+
+### Query parameters
+
+<ParamField query="startDate" type="string">
+  ISO 8601 start date for the stats window.
+</ParamField>
+<ParamField query="endDate" type="string">
+  ISO 8601 end date for the stats window.
+</ParamField>
+
+```bash Example
+curl --request GET \
+  --url 'https://next-api.useplunk.com/events/stats?startDate=2024-01-01&endDate=2024-01-31' \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Get contact events
+
+`GET /events/contact/:contactId`
+
+Returns recent events for a specific contact.
+
+### Path parameters
+
+<ParamField path="contactId" type="string" required>The contact ID.</ParamField>
+
+### Query parameters
+
+<ParamField query="limit" type="number" default="50">Maximum number of events to return.</ParamField>
+
+```bash Example
+curl --request GET \
+  --url https://next-api.useplunk.com/events/contact/clx_contact_abc123 \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```
+
+---
+
+## Delete events by name
+
+`DELETE /events/:eventName`
+
+Deletes all event records with a specific name. Only works if the event is not used in any segments or workflows.
+
+### Path parameters
+
+<ParamField path="eventName" type="string" required>
+  The event name to delete (e.g. `old_event`). URL-encode special characters.
+</ParamField>
+
+<Warning>
+  Check event usage with `GET /events/:eventName/usage` before deleting. You cannot delete a system event or an event currently referenced by a workflow trigger or segment condition.
+</Warning>
+
+```bash Example
+curl --request DELETE \
+  --url https://next-api.useplunk.com/events/old_test_event \
+  --header 'Authorization: Bearer sk_live_yourkey'
+```

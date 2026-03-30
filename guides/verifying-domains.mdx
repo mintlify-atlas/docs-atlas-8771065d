@@ -1,0 +1,94 @@
+---
+title: "Verifying domains"
+description: "Add and verify your sending domain so Plunk can send authenticated emails on your behalf."
+icon: "globe"
+---
+
+Before you can send emails through Plunk, you must verify at least one domain. Domain verification proves that you own the domain and authorizes Plunk to send email on its behalf. Without it, emails will fail to send and your domain's reputation cannot be protected.
+
+## Why domain verification matters
+
+- **Deliverability**: Gmail, Outlook, and other providers use DKIM and SPF to decide whether to deliver or reject email. Without these records, your emails are more likely to be marked as spam or silently dropped.
+- **Anti-spoofing**: DMARC alignment prevents anyone else from impersonating your domain.
+- **Bounce handling**: An MX record lets Plunk receive delivery failure notices and spam complaints so it can automatically manage your contact list.
+
+## Adding a domain
+
+<Steps>
+  <Step title="Open project settings">
+    In the dashboard sidebar, click **Settings** for your project, then select the **Domains** tab.
+  </Step>
+  <Step title="Add your domain">
+    Enter the domain you want to send from (e.g., `yourdomain.com`) and click **Add domain**. Plunk will generate the DNS records you need to add.
+  </Step>
+  <Step title="Add the DNS records">
+    Log in to your DNS provider and add each record shown. See the record types below for details on what each one does.
+  </Step>
+  <Step title="Wait for verification">
+    Plunk checks your DNS records automatically. Verification typically completes within a few minutes, but DNS propagation can take up to 72 hours depending on your provider's TTL settings.
+  </Step>
+</Steps>
+
+## DNS records
+
+Domain verification requires four DNS records. Each serves a distinct purpose.
+
+### DKIM records — 3 CNAME records
+
+**DomainKeys Identified Mail (DKIM)** signs outgoing emails with a cryptographic key. Receiving mail servers use the public half of this key (stored in your DNS) to verify that the email was sent by Plunk and has not been modified in transit.
+
+Plunk provides **three CNAME records** for DKIM. You must add all three.
+
+| What it prevents | Why you need all three |
+| --- | --- |
+| Email spoofing and tampering | AWS SES uses three DKIM selectors for key rotation and redundancy |
+| Spam classification | DKIM is a requirement for Gmail and Outlook's authentication checks |
+
+### SPF record — 1 TXT record
+
+**Sender Policy Framework (SPF)** publishes a list of mail servers that are authorized to send email for your domain. When a receiving server checks SPF, it looks at this TXT record to decide whether the sending server (AWS SES in this case) is legitimate.
+
+<Note>
+  If you already have an SPF record for your domain, you may need to merge the Plunk value into the existing record rather than adding a second TXT record. Most DNS providers only allow one SPF record per domain.
+</Note>
+
+### Bounce handling MX record — 1 MX record
+
+This MX record routes delivery failure notifications (bounces) and spam complaints back to Plunk. Without it, Plunk cannot automatically detect and unsubscribe contacts whose addresses are invalid or who have marked your email as spam.
+
+<Note>
+  This MX record is for **outbound** email processing (handling bounces and complaints). If you also want to **receive** inbound emails at your domain and trigger workflows, you need a separate inbound MX record. See [Receiving emails](/guides/receiving-emails) for setup instructions.
+</Note>
+
+## Verification status
+
+After adding all records, the **Domains** tab shows the verification status for each record individually. A record moves to **Verified** once Plunk detects it in DNS.
+
+You do not need all records to verify simultaneously — they are checked independently. However, you should not send email until all records are verified.
+
+Verification can take up to **72 hours** if your DNS provider has a high TTL or slow propagation.
+
+## Troubleshooting
+
+### Records not verifying after 24 hours
+
+1. **Check for typos**: Copy the exact values from the Domains tab. Extra spaces or incorrect capitalization will cause failures.
+2. **Check propagation**: Use `dig` or an online DNS checker to confirm the records are live:
+   ```bash
+   dig CNAME _domainkey.yourdomain.com
+   dig TXT yourdomain.com
+   dig MX yourdomain.com
+   ```
+3. **Lower your TTL**: A high TTL means DNS changes take longer to propagate. Temporarily lower it to 300 seconds while verifying.
+4. **Contact your DNS provider**: Some providers have quirks with CNAME records or require specific formatting. Check their documentation for adding CNAME and TXT records.
+
+### Emails still going to spam after verification
+
+Domain verification is necessary but not sufficient for inbox placement. Emails can still land in spam if:
+
+- Your sending domain or IP has a low reputation (common with new domains)
+- Email content triggers spam filters (excessive links, suspicious keywords, missing plain-text alternative)
+- Recipients have previously marked your emails as spam
+- You are sending to large numbers of unengaged or invalid addresses
+
+Maintain good [list hygiene](/guides/list-hygiene) and start with small send volumes to build reputation gradually.

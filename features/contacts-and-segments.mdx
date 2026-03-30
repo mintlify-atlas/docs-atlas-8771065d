@@ -1,0 +1,189 @@
+---
+title: "Contacts and segments"
+description: "Manage individual email recipients with custom data fields, and group them into dynamic or static segments for targeting."
+keywords: ["contacts", "segments", "subscription", "import", "csv", "dynamic", "static", "unsubscribe"]
+icon: "users"
+---
+
+Contacts are the individual email recipients in your Plunk project. Each contact has an email address, a subscription state, and an optional set of custom data fields. Segments let you group contacts into named lists — either by filter conditions or by manual curation.
+
+## Contacts
+
+### What a contact is
+
+A contact represents a single person identified by their email address. Plunk stores:
+
+- **Email address** — the primary identifier within a project
+- **Subscription state** — whether the contact receives marketing emails
+- **Custom data** — arbitrary key-value pairs attached to the contact record (e.g., `firstName`, `plan`, `trialEndsAt`)
+
+### Adding contacts
+
+<CardGroup cols={2}>
+  <Card title="Event tracking (auto-create)" icon="chart-line" href="/guides/tracking">
+    When you call `POST /v1/track` for an email address that does not yet exist, Plunk creates the contact automatically.
+  </Card>
+  <Card title="Contacts API" icon="code" href="/api-reference/endpoints/contacts">
+    Create or update a single contact via `POST /contacts`. Existing contacts are upserted by email address.
+  </Card>
+  <Card title="CSV import" icon="file-csv">
+    Upload a CSV file from the **Contacts** section of the dashboard. The import is processed in the background.
+  </Card>
+  <Card title="Dashboard" icon="layout-dashboard">
+    Add individual contacts manually from the **Contacts** section of the dashboard.
+  </Card>
+</CardGroup>
+
+### Contact data types
+
+Custom data values are inferred from the JSON value you provide:
+
+| Type | Description | Example |
+|---|---|---|
+| `string` | Any text value | `"pro"`, `"Jane"` |
+| `number` | Integer or float | `42`, `9.99` |
+| `boolean` | True or false | `true`, `false` |
+| `date` | ISO 8601 timestamp | `"2025-03-01T00:00:00Z"` |
+
+<Note>
+If you accidentally mix types for the same key across different contacts, Plunk defaults to treating the value as a string. Keep type usage consistent per key to get accurate segment filtering and template rendering.
+</Note>
+
+### Reserved keys
+
+These keys are automatically managed by Plunk and cannot be set directly through the data object:
+
+| Key | Description |
+|---|---|
+| `email` | The contact's email address |
+| `createdAt` | Timestamp of when the contact was created |
+| `updatedAt` | Timestamp of the last update to the contact record |
+| `subscribed` | Boolean indicating global subscription state |
+
+### Special keys
+
+| Key | Description |
+|---|---|
+| `locale` | The contact's preferred locale in [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) format (e.g., `"en"`, `"fr"`, `"es"`). When set, overrides the project-wide language for the contact's unsubscribe page and email footer. |
+
+### Subscription states
+
+Every contact has a `subscribed` field that controls whether they receive marketing emails. A newly created contact is subscribed by default when added via `POST /contacts` or the dashboard. Contacts created via `POST /v1/send` default to **unsubscribed** unless you explicitly pass `"subscribed": true`.
+
+#### How contacts become unsubscribed
+
+| Reason | Description |
+|---|---|
+| **Manual** | A team member changes the contact's state in the dashboard or via the API (`PATCH /contacts/:id`) |
+| **Self-service** | The contact clicks the unsubscribe link in an email footer |
+| **Automatic** | An email to the contact results in a hard bounce or spam complaint — Plunk unsubscribes the contact automatically to protect sender reputation |
+
+#### Email delivery by subscription state
+
+| Email type | Subscribed | Unsubscribed |
+|---|---|---|
+| **Transactional** (via `/v1/send` with a transactional template) | Delivered | Delivered |
+| **Campaigns** | Delivered | Not delivered |
+| **Workflow — transactional template** | Delivered | Delivered |
+| **Workflow — marketing template** | Delivered | Not delivered |
+
+<Warning>
+Even when using the `/v1/send` endpoint, you cannot send a **marketing template** to an unsubscribed contact. If the email must reach all contacts regardless of subscription state, use a transactional template instead.
+</Warning>
+
+---
+
+## Segments
+
+Segments are named groups of contacts. You can use segments to target specific audiences in [campaigns](/features/campaigns) and as conditions in [workflows](/features/workflows). There are two types: **dynamic** and **static**.
+
+### Dynamic segments
+
+Dynamic segments evaluate a set of filter conditions against your contacts in real time. Membership updates automatically as contact data, events, and email activity change — no manual work is needed.
+
+You can filter on:
+
+- Contact fields — `email`, `subscribed`, custom data fields like `data.plan`
+- Contact timestamps — `createdAt`, `updatedAt`
+- Custom events — e.g., `event.signed_up`, `event.purchased`
+- Email activity — `email.opened`, `email.clicked`, `email.bounced`
+
+Conditions can be combined with `AND` / `OR` logic and nested into groups for complex rules.
+
+**Example:** contacts on the `pro` plan who signed up in the last 30 days:
+
+```json
+{
+  "logic": "AND",
+  "groups": [
+    {
+      "filters": [
+        { "field": "data.plan", "operator": "equals", "value": "pro" },
+        { "field": "createdAt", "operator": "within", "value": 30, "unit": "days" }
+      ]
+    }
+  ]
+}
+```
+
+### Static segments
+
+Static segments are manually curated lists. Membership does not change automatically — you decide exactly who is included. Static segments are useful for beta testers, event attendees, or any group imported from an external source.
+
+#### Creating a static segment
+
+<Steps>
+  <Step title="Create the segment">
+    Go to **Segments**, click **Create Segment**, and choose **Static** with the toggle at the top.
+  </Step>
+  <Step title="Add initial members (optional)">
+    Start typing an email address to search for existing contacts and add them to the segment immediately.
+  </Step>
+  <Step title="Save">
+    Click **Save**. The segment is created with any members you selected.
+  </Step>
+</Steps>
+
+#### Managing static segment members
+
+Open a static segment to add or remove members:
+
+- **Add**: use the **Add Members** search, which looks up contacts already in your project.
+- **Remove**: click the remove button on the contact's row in the members list.
+
+You can also manage members via the API:
+
+```bash
+# Add members by email
+curl -X POST https://api.useplunk.com/segments/{id}/members \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{ "emails": ["jane@example.com", "john@example.com"] }'
+
+# Remove members by email
+curl -X DELETE https://api.useplunk.com/segments/{id}/members \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{ "emails": ["jane@example.com"] }'
+```
+
+### Tracking membership changes
+
+Both segment types support **Track membership changes**. When enabled on a segment named `trial-users`, Plunk fires a webhook event each time a contact enters or leaves the segment:
+
+- `segment.trial-users.entry` — contact joined the segment
+- `segment.trial-users.exit` — contact left the segment
+
+The event name is derived from the segment name (lowercased, spaces replaced with hyphens). See the [Webhooks guide](/guides/webhooks) for the full event payload format.
+
+### Using segments
+
+| Where | How |
+|---|---|
+| **Campaigns** | Select a segment as the target audience when creating or editing a campaign |
+| **Workflows** | Use a segment as the trigger condition, or use a Condition step to check segment membership |
+
+## API reference
+
+- Contacts: [Contacts](/api-reference/endpoints/contacts)
+- Segments: [Segments](/api-reference/endpoints/segments)

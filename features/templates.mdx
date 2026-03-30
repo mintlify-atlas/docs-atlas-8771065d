@@ -1,0 +1,165 @@
+---
+title: "Templates"
+description: "Create reusable email designs for transactional emails, campaigns, and workflow steps — with variable substitution and type-based delivery rules."
+keywords: ["templates", "email templates", "variables", "handlebars", "marketing", "transactional", "personalization"]
+icon: "file-code"
+---
+
+Templates are reusable email designs stored in your Plunk project. Instead of writing HTML inline in every API call, you create a template once in the dashboard and reference it by ID. Templates support variable substitution, custom sender addresses, and two delivery types that control which contacts can receive them.
+
+## Why use templates
+
+<CardGroup cols={2}>
+  <Card title="Reusability" icon="copy">
+    Write your email HTML once and reuse it across API sends, workflow steps, and campaigns. Updates to the template apply everywhere it is used.
+  </Card>
+  <Card title="Variable substitution" icon="braces">
+    Use `{{variable}}` placeholders in the subject and body. Plunk resolves them from contact data at send time.
+  </Card>
+  <Card title="Consistent branding" icon="palette">
+    Manage all email designs in one place. Teams can review and update templates without changing application code.
+  </Card>
+  <Card title="Type-based delivery rules" icon="shield-check">
+    The template type (transactional vs. marketing) determines whether unsubscribed contacts can receive the email — independent of how it is sent.
+  </Card>
+</CardGroup>
+
+## Creating a template
+
+<Steps>
+  <Step title="Open Templates in the dashboard">
+    Navigate to **Templates** and click **Create Template**.
+  </Step>
+  <Step title="Set the template details">
+    - **Name** — internal label, not shown to recipients
+    - **Description** — optional notes
+    - **Type** — `TRANSACTIONAL` or `MARKETING` (see [Template types](#template-types) below)
+  </Step>
+  <Step title="Configure the sender">
+    - **From** — must be from a [verified domain](/guides/verifying-domains) in your project
+    - **From name** — optional display name shown in the recipient's inbox
+    - **Reply-to** — optional reply address
+  </Step>
+  <Step title="Write the content">
+    - **Subject** — the email subject line; supports `{{variable}}` placeholders
+    - **Body** — HTML email content; use the built-in editor or paste your own HTML
+
+    Use the preview window to select a contact and see how the template renders with real data.
+  </Step>
+  <Step title="Save the template">
+    Click **Save**. The template is assigned an ID you can use in API calls.
+  </Step>
+</Steps>
+
+## Template types
+
+Templates have one of two types. Choose based on whether the email is an action-triggered notification or a marketing communication.
+
+| Type | Unsubscribe footer | Sent to unsubscribed contacts? | Use for |
+|---|---|---|---|
+| `TRANSACTIONAL` | Not included | Yes — always delivered | Password resets, invoices, account alerts, receipts |
+| `MARKETING` | Automatically included (Plunk-hosted unsubscribe page) | No — unsubscribed contacts are skipped | Newsletters, announcements, promotions |
+
+<Warning>
+The `MARKETING` type restriction applies everywhere — even when sending via `POST /v1/send`. If you attempt to send a marketing template to an unsubscribed contact through the transactional endpoint, the email will not be delivered. Use a `TRANSACTIONAL` template if the email must reach all contacts.
+</Warning>
+
+## Variable substitution
+
+Use `{{variableName}}` in the subject or body to insert dynamic values. Plunk resolves variables from the contact's data at send time.
+
+```html
+<p>Hi {{firstName}},</p>
+<p>Your order <strong>{{orderId}}</strong> has shipped.</p>
+<p>Expected delivery: {{deliveryDate}}</p>
+```
+
+### Always-available variables
+
+These variables are available in every template, regardless of custom contact data:
+
+| Variable | Description |
+|---|---|
+| `{{id}}` | The contact's unique identifier |
+| `{{email}}` | The contact's email address |
+| `{{unsubscribeUrl}}` | URL to the Plunk-hosted unsubscribe page |
+| `{{subscribeUrl}}` | URL to the Plunk-hosted subscribe / re-subscribe page |
+| `{{manageUrl}}` | URL to the Plunk-hosted preferences management page |
+
+### Special fields
+
+These fields are reserved by Plunk but can be used in templates:
+
+| Variable | Description |
+|---|---|
+| `{{subscribed}}` | The contact's subscription state (`true` or `false`) |
+| `{{locale}}` | The contact's preferred locale (e.g., `"en"`, `"fr"`) |
+
+### Fallback values
+
+Use `{{variable ?? 'fallback'}}` to provide a default when a variable is not set:
+
+```html
+<p>Hi {{firstName ?? 'there'}},</p>
+```
+
+If `firstName` is not set on the contact, this renders as `Hi there,`.
+
+### Passing data at send time
+
+When sending via `POST /v1/send`, pass a `data` object to supply or override variable values:
+
+```json
+{
+  "to": "jane@example.com",
+  "template": "tpl_abc123",
+  "data": {
+    "firstName": "Jane",
+    "orderId": { "value": "ORD-9042", "persistent": false },
+    "deliveryDate": { "value": "April 3, 2026", "persistent": false }
+  }
+}
+```
+
+- **Persistent values** (plain key-value pairs) are saved to the contact record and used for future emails.
+- **Non-persistent values** (`{ "value": "...", "persistent": false }`) are used only for this send and not saved.
+
+## Using templates in transactional emails
+
+Pass the template ID in the `template` field of `POST /v1/send`. Fields provided in the request body (such as `subject` or `from`) override the template's stored values.
+
+```bash
+curl -X POST https://api.useplunk.com/v1/send \
+  -H "Authorization: Bearer sk_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "jane@example.com",
+    "template": "tpl_abc123",
+    "data": {
+      "firstName": "Jane",
+      "resetUrl": { "value": "https://yourapp.com/reset/xyz", "persistent": false }
+    }
+  }'
+```
+
+See [Transactional emails](/features/transactional-emails#sending-with-a-template) for the full parameter reference.
+
+## Using templates in workflows
+
+In the **Send Email** step of a workflow, select a template from the dropdown. The contact's data — along with event context from the workflow execution — is available for variable substitution.
+
+<Note>
+The template's type controls delivery. A marketing template in a workflow step will not be sent to an unsubscribed contact. Use a transactional template for steps that must always deliver.
+</Note>
+
+## Using templates in campaigns
+
+When creating a campaign, you can base the email content on a saved template. Select the template in the campaign editor; the subject and body are pre-filled from the template and can be edited before sending.
+
+<Note>
+Campaigns are always sent only to subscribed contacts, regardless of template type.
+</Note>
+
+## API reference
+
+See the full endpoint reference at [Templates](/api-reference/endpoints/templates).

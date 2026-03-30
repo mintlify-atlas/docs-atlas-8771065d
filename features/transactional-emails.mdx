@@ -1,0 +1,245 @@
+---
+title: "Transactional emails"
+description: "Send triggered, one-to-one emails via the API — password resets, order confirmations, notifications, and more."
+keywords: ["transactional", "send email", "api", "attachments", "template", "recipients"]
+icon: "send"
+---
+
+Transactional emails are programmatic, one-to-one emails sent in response to a user action or system event. Use them for password resets, order confirmations, account notifications, invoices, and any email that targets a specific individual rather than a broadcast audience.
+
+## Transactional vs. campaigns
+
+| | Transactional | Campaigns |
+|---|---|---|
+| **Triggered by** | API call | Dashboard action or schedule |
+| **Audience** | One or more specific recipients | All subscribed contacts or a segment |
+| **Subscription check** | Ignored — always delivered | Required — only delivered to subscribed contacts |
+| **Use case** | Password reset, invoice, notification | Newsletter, product announcement, promotion |
+
+<Note>
+Transactional emails bypass subscription state by design. A contact who has unsubscribed will still receive a transactional email. If you use a **marketing template**, however, that restriction still applies — see [Template types](/features/templates#template-types).
+</Note>
+
+## Sending via the API
+
+Use `POST /v1/send` with a secret API key. The endpoint accepts a single recipient or an array of recipients in one request.
+
+<Tabs>
+  <Tab title="Single recipient">
+    ```bash
+    curl -X POST https://api.useplunk.com/v1/send \
+      -H "Authorization: Bearer sk_live_..." \
+      -H "Content-Type: application/json" \
+      -d '{
+        "to": "jane@example.com",
+        "subject": "Your password reset link",
+        "body": "<p>Click <a href=\"{{resetUrl}}\">here</a> to reset your password.</p>",
+        "from": "noreply@yourapp.com",
+        "fromName": "Your App",
+        "data": {
+          "resetUrl": { "value": "https://yourapp.com/reset/abc123", "persistent": false }
+        }
+      }'
+    ```
+  </Tab>
+  <Tab title="Object format (recommended)">
+    ```bash
+    curl -X POST https://api.useplunk.com/v1/send \
+      -H "Authorization: Bearer sk_live_..." \
+      -H "Content-Type: application/json" \
+      -d '{
+        "to": {
+          "name": "Jane Doe",
+          "email": "jane@example.com"
+        },
+        "subject": "Order #1042 confirmed",
+        "body": "<p>Hi {{name}}, your order has been confirmed.</p>",
+        "from": {
+          "name": "Orders",
+          "email": "orders@yourapp.com"
+        }
+      }'
+    ```
+  </Tab>
+  <Tab title="JavaScript">
+    ```javascript
+    const response = await fetch("https://api.useplunk.com/v1/send", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer sk_live_...",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: { name: "Jane Doe", email: "jane@example.com" },
+        subject: "Order #1042 confirmed",
+        body: "<p>Hi {{name}}, your order has been confirmed.</p>",
+        from: { name: "Orders", email: "orders@yourapp.com" },
+      }),
+    });
+    const data = await response.json();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import requests
+
+    response = requests.post(
+        "https://api.useplunk.com/v1/send",
+        headers={
+            "Authorization": "Bearer sk_live_...",
+            "Content-Type": "application/json",
+        },
+        json={
+            "to": {"name": "Jane Doe", "email": "jane@example.com"},
+            "subject": "Order #1042 confirmed",
+            "body": "<p>Hi {{name}}, your order has been confirmed.</p>",
+            "from": {"name": "Orders", "email": "orders@yourapp.com"},
+        },
+    )
+    data = response.json()
+    ```
+  </Tab>
+</Tabs>
+
+### Request parameters
+
+<ParamField body="to" type="string | object | array" required>
+  The recipient or recipients of the email.
+
+  - **String**: `"jane@example.com"`
+  - **Object**: `{ "name": "Jane Doe", "email": "jane@example.com" }`
+  - **Array**: mix of strings and objects — `["jane@example.com", { "name": "John", "email": "john@example.com" }]`
+</ParamField>
+
+<ParamField body="subject" type="string" required>
+  The email subject line. Supports `{{variable}}` substitution from the `data` object.
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  The HTML body of the email. Supports `{{variable}}` substitution and `{{variable ?? 'fallback'}}` syntax.
+</ParamField>
+
+<ParamField body="from" type="string | object" required>
+  The sender address. Must belong to a verified domain in your project.
+
+  - **String**: `"noreply@yourapp.com"`
+  - **Object**: `{ "name": "Your App", "email": "noreply@yourapp.com" }`
+</ParamField>
+
+<ParamField body="fromName" type="string">
+  Display name for the sender. Alternative to passing `from` as an object with a `name` field.
+</ParamField>
+
+<ParamField body="reply" type="string">
+  Reply-to email address.
+</ParamField>
+
+<ParamField body="template" type="string">
+  ID of a [template](/features/templates) to use for the email. The template's `subject`, `body`, `from`, and `fromName` are used as defaults — any fields provided in the request override the template values.
+</ParamField>
+
+<ParamField body="data" type="object">
+  Key-value pairs used for template variable substitution and, by default, saved as contact data.
+
+  - **Persistent** (default): `"firstName": "Jane"` — saved to the contact record and usable in future emails.
+  - **Non-persistent**: `"resetCode": { "value": "ABC123", "persistent": false }` — used only for this email, not saved.
+</ParamField>
+
+<ParamField body="headers" type="object">
+  Additional email headers to include, as a flat key-value object. For example, `{ "X-Campaign-ID": "welcome-flow" }`.
+</ParamField>
+
+<ParamField body="attachments" type="array">
+  Array of attachment objects. Maximum 10 attachments, 10 MB total. Each object requires:
+
+  - `filename` — the filename displayed to the recipient
+  - `content` — base64-encoded file content
+  - `contentType` — MIME type, e.g. `"application/pdf"` or `"image/png"`
+</ParamField>
+
+<ParamField body="subscribed" type="boolean">
+  Explicitly set the contact's subscription state. If omitted, existing contacts keep their current state; new contacts default to unsubscribed.
+</ParamField>
+
+## Sending to multiple recipients
+
+Pass an array to `to` to send the same email to multiple recipients in a single API call. Each recipient is processed independently — their contact record is created or updated, variables are resolved against their own data, and a separate email record is created for each.
+
+```json
+{
+  "to": [
+    { "name": "Jane Doe", "email": "jane@example.com" },
+    { "name": "John Smith", "email": "john@example.com" }
+  ],
+  "subject": "Your invoice is ready",
+  "body": "<p>Hi {{name}}, your invoice for {{amount}} is attached.</p>",
+  "from": { "name": "Billing", "email": "billing@yourapp.com" },
+  "attachments": [
+    {
+      "filename": "invoice.pdf",
+      "content": "JVBERi0xLjQK...",
+      "contentType": "application/pdf"
+    }
+  ]
+}
+```
+
+## Sending with attachments
+
+Include the `attachments` array in the request body. Each attachment must be base64-encoded.
+
+```json
+{
+  "to": "jane@example.com",
+  "subject": "Your receipt",
+  "body": "<p>Thanks for your order. Your receipt is attached.</p>",
+  "from": "billing@yourapp.com",
+  "attachments": [
+    {
+      "filename": "receipt-1042.pdf",
+      "content": "JVBERi0xLjQK...",
+      "contentType": "application/pdf"
+    }
+  ]
+}
+```
+
+<Warning>
+Emails with attachments count as **two emails** toward your billing usage, regardless of the number of attachments. The maximum is 10 attachments and 10 MB total across all attachments in a single send.
+</Warning>
+
+## Sending with a template
+
+Pass the `template` parameter with a template ID to use a saved template. Any fields you provide in the request body (such as `subject` or `from`) override the template's stored values.
+
+```json
+{
+  "to": "jane@example.com",
+  "template": "tpl_abc123",
+  "data": {
+    "firstName": "Jane",
+    "resetUrl": { "value": "https://yourapp.com/reset/xyz", "persistent": false }
+  }
+}
+```
+
+The `data` object is merged with the contact's existing data to resolve `{{variable}}` placeholders in the template. Non-persistent values (using `{ "value": "...", "persistent": false }`) are available only for this send and are not saved to the contact record.
+
+<Tip>
+Use non-persistent data for one-time values like password reset tokens, OTP codes, or signed URLs — anything that should not overwrite the contact's stored fields.
+</Tip>
+
+## Subscription state behavior
+
+Transactional emails are delivered regardless of the contact's subscription state. This makes them appropriate for account and transactional notifications that the user must receive.
+
+| Contact state | Email delivered? |
+|---|---|
+| Subscribed | Yes |
+| Unsubscribed | Yes |
+
+The one exception is marketing templates — even through `/v1/send`, a marketing template will not be sent to an unsubscribed contact. Use a transactional template if the email must reach all contacts. See [Template types](/features/templates#template-types).
+
+## API reference
+
+See the full endpoint reference at [POST /v1/send](/api-reference/endpoints/send).

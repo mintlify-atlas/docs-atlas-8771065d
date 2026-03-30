@@ -1,0 +1,372 @@
+---
+title: "Webhooks"
+description: "Forward real-time event data from Plunk to your own application using the workflow system."
+icon: "webhook"
+---
+
+Plunk can send HTTP requests to your server whenever specific events occur — email bounces, spam complaints, contact subscription changes, and more. Webhooks are powered by Plunk's workflow system, which means you can combine them with conditions, delays, and other steps to build sophisticated integrations.
+
+## How it works
+
+Webhooks in Plunk are not a standalone feature. They are a **step type** in the workflow builder. The flow is:
+
+1. An event occurs in Plunk (an email bounces, a contact subscribes, a custom event fires)
+2. A workflow is triggered by that event
+3. The workflow executes a **Webhook** step, sending a `POST` request to your endpoint with the event data
+
+This design means you can apply filters, delays, and transformations before any data leaves Plunk.
+
+## Internal events
+
+Plunk automatically generates a set of internal events. You cannot track these manually via the API — they are emitted by the system.
+
+### Email events
+
+| Event | Description |
+| --- | --- |
+| `email.sent` | An email was successfully sent |
+| `email.delivery` | An email was delivered to the recipient |
+| `email.open` | A contact opened an email (first open only) |
+| `email.click` | A contact clicked a link in an email (first click only) |
+| `email.bounce` | An email bounced — permanent or transient |
+| `email.complaint` | A contact marked an email as spam |
+| `email.received` | An email was received at your verified domain (requires [inbound email setup](/guides/receiving-emails)) |
+
+### Contact events
+
+| Event | Description |
+| --- | --- |
+| `contact.subscribed` | A contact's subscription status changed to subscribed |
+| `contact.unsubscribed` | A contact's subscription status changed to unsubscribed |
+
+### Segment events
+
+| Event | Description |
+| --- | --- |
+| `segment.<name>.entry` | A contact entered a segment |
+| `segment.<name>.exit` | A contact exited a segment |
+
+<Note>
+  Segment event names use a slugified version of the segment name. A segment called "VIP Users" produces the events `segment.vip-users.entry` and `segment.vip-users.exit`.
+</Note>
+
+## Setting up a webhook
+
+<Steps>
+  <Step title="Create the workflow">
+    Go to **Workflows** in the dashboard and create a new workflow. Select the trigger event — for example, `email.bounce` to receive notifications when an email bounces.
+  </Step>
+  <Step title="Add a Webhook step">
+    After the trigger, click **Add step** and choose **Webhook**. Configure the step:
+
+    - **URL**: The endpoint on your server that will receive the request (e.g. `https://api.example.com/webhooks/plunk`)
+    - **Method**: `POST` is recommended and is the default
+    - **Headers** (optional): Custom request headers as JSON. Use this to pass an authentication token to your endpoint:
+
+    ```json
+    {
+      "Authorization": "Bearer your-secret-token",
+      "X-Webhook-Source": "plunk"
+    }
+    ```
+  </Step>
+  <Step title="Enable the workflow">
+    Save and enable the workflow. It will immediately start sending requests whenever the trigger event fires.
+  </Step>
+</Steps>
+
+## Webhook payload
+
+Plunk sends a JSON `POST` body with four top-level fields:
+
+```json
+{
+  "contact": {
+    "email": "user@example.com",
+    "subscribed": true,
+    "data": {
+      "name": "Jane",
+      "plan": "pro"
+    }
+  },
+  "workflow": {
+    "id": "wf_abc123",
+    "name": "Bounce notifications"
+  },
+  "execution": {
+    "id": "exec_xyz789",
+    "startedAt": "2025-01-15T10:30:00.000Z"
+  },
+  "event": {}
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `contact` | The contact associated with the event — email, subscription status, and custom data fields |
+| `workflow` | The workflow that triggered this webhook |
+| `execution` | The specific workflow execution instance |
+| `event` | Event-specific data (contents vary by event type — see below) |
+
+## Event data by type
+
+The `event` field contains data specific to the event that triggered the workflow.
+
+### Email events
+
+All email events share a common set of base fields:
+
+| Field | Description |
+| --- | --- |
+| `subject` | The email subject line |
+| `from` | The sender email address |
+| `fromName` | The sender display name |
+| `messageId` | The AWS SES message ID |
+| `templateId` | The template ID, or `null` if no template was used |
+| `campaignId` | The campaign ID, or `null` if not part of a campaign |
+| `sourceType` | How the email was sent: `TRANSACTIONAL`, `CAMPAIGN`, `WORKFLOW`, or `INBOUND` |
+
+Each event type adds its own fields on top of these:
+
+<Tabs>
+  <Tab title="email.sent">
+    ```json
+    {
+      "subject": "Welcome to Plunk",
+      "from": "hello@example.com",
+      "fromName": "Plunk Team",
+      "messageId": "ses-message-id",
+      "templateId": null,
+      "campaignId": null,
+      "sourceType": "TRANSACTIONAL",
+      "sentAt": "2025-01-15T10:30:00.000Z"
+    }
+    ```
+
+    | Field | Description |
+    | --- | --- |
+    | `sentAt` | When the email was sent |
+  </Tab>
+  <Tab title="email.delivery">
+    ```json
+    {
+      "subject": "Welcome to Plunk",
+      "from": "hello@example.com",
+      "fromName": "Plunk Team",
+      "messageId": "ses-message-id",
+      "templateId": null,
+      "campaignId": "camp_abc123",
+      "sourceType": "CAMPAIGN",
+      "deliveredAt": "2025-01-15T10:30:05.000Z"
+    }
+    ```
+
+    | Field | Description |
+    | --- | --- |
+    | `deliveredAt` | When the email was delivered |
+  </Tab>
+  <Tab title="email.open">
+    ```json
+    {
+      "subject": "Welcome to Plunk",
+      "from": "hello@example.com",
+      "fromName": "Plunk Team",
+      "messageId": "ses-message-id",
+      "templateId": null,
+      "campaignId": null,
+      "sourceType": "TRANSACTIONAL",
+      "openedAt": "2025-01-15T11:00:00.000Z",
+      "opens": 1,
+      "isFirstOpen": true
+    }
+    ```
+
+    | Field | Description |
+    | --- | --- |
+    | `openedAt` | When the email was first opened |
+    | `opens` | Total number of opens for this email |
+    | `isFirstOpen` | `true` if this is the contact's first open of this email |
+  </Tab>
+  <Tab title="email.click">
+    ```json
+    {
+      "subject": "Welcome to Plunk",
+      "from": "hello@example.com",
+      "fromName": "Plunk Team",
+      "messageId": "ses-message-id",
+      "templateId": null,
+      "campaignId": null,
+      "sourceType": "TRANSACTIONAL",
+      "link": "https://example.com/pricing",
+      "clickedAt": "2025-01-15T11:05:00.000Z",
+      "clicks": 1,
+      "isFirstClick": true
+    }
+    ```
+
+    | Field | Description |
+    | --- | --- |
+    | `link` | The URL that was clicked |
+    | `clickedAt` | When the first click occurred |
+    | `clicks` | Total number of link clicks for this email |
+    | `isFirstClick` | `true` if this is the contact's first click on this email |
+  </Tab>
+  <Tab title="email.bounce">
+    Permanent bounce:
+
+    ```json
+    {
+      "subject": "Welcome to Plunk",
+      "from": "hello@example.com",
+      "fromName": "Plunk Team",
+      "messageId": "ses-message-id",
+      "templateId": null,
+      "campaignId": null,
+      "sourceType": "TRANSACTIONAL",
+      "bounceType": "Permanent",
+      "bouncedAt": "2025-01-15T10:31:00.000Z"
+    }
+    ```
+
+    Transient (soft) bounce:
+
+    ```json
+    {
+      "subject": "Welcome to Plunk",
+      "from": "hello@example.com",
+      "fromName": "Plunk Team",
+      "messageId": "ses-message-id",
+      "templateId": null,
+      "campaignId": null,
+      "sourceType": "TRANSACTIONAL",
+      "bounceType": "Transient",
+      "transientBounce": true
+    }
+    ```
+
+    | Field | Description |
+    | --- | --- |
+    | `bounceType` | `Permanent` (hard bounce) or `Transient` (soft bounce — mailbox full, out-of-office, etc.) |
+    | `bouncedAt` | When the bounce occurred. Present only for `Permanent` bounces |
+    | `transientBounce` | `true` for soft bounces. These contacts remain subscribed |
+
+    <Warning>
+      Only `Permanent` bounces count toward your project's bounce rate and trigger automatic contact unsubscription. `Transient` bounces are tracked for visibility but have no effect on subscription status or bounce rate.
+    </Warning>
+  </Tab>
+  <Tab title="email.complaint">
+    ```json
+    {
+      "subject": "Welcome to Plunk",
+      "from": "hello@example.com",
+      "fromName": "Plunk Team",
+      "messageId": "ses-message-id",
+      "templateId": null,
+      "campaignId": null,
+      "sourceType": "TRANSACTIONAL",
+      "complainedAt": "2025-01-15T10:35:00.000Z"
+    }
+    ```
+
+    | Field | Description |
+    | --- | --- |
+    | `complainedAt` | When the spam complaint was received |
+  </Tab>
+  <Tab title="email.received">
+    This event fires when an email arrives at your verified domain. See [Receiving emails](/guides/receiving-emails) for setup.
+
+    ```json
+    {
+      "messageId": "ses-message-id",
+      "from": "sender@example.com",
+      "fromHeader": "Jane Smith <sender@example.com>",
+      "to": "support@yourdomain.com",
+      "subject": "Re: Your question",
+      "timestamp": "2025-01-15T10:30:00.000Z",
+      "recipients": ["support@yourdomain.com"],
+      "hasContent": true,
+      "spamVerdict": "PASS",
+      "virusVerdict": "PASS",
+      "spfVerdict": "PASS",
+      "dkimVerdict": "PASS",
+      "dmarcVerdict": "PASS",
+      "processingTimeMillis": 142
+    }
+    ```
+
+    | Field | Description |
+    | --- | --- |
+    | `messageId` | The AWS SES message ID |
+    | `from` | The sender's email address |
+    | `fromHeader` | The full `From` header, including display name |
+    | `to` | The recipient address at your verified domain |
+    | `subject` | The email subject line |
+    | `timestamp` | When SES received the email |
+    | `recipients` | All recipient addresses in the envelope |
+    | `hasContent` | Whether the email body content is available |
+    | `spamVerdict` | SES spam check result: `PASS`, `FAIL`, `GRAY`, or `PROCESSING_FAILED` |
+    | `virusVerdict` | SES virus scan result |
+    | `spfVerdict` | SPF authentication result |
+    | `dkimVerdict` | DKIM authentication result |
+    | `dmarcVerdict` | DMARC authentication result |
+    | `processingTimeMillis` | Time SES took to process the inbound email |
+  </Tab>
+</Tabs>
+
+### Contact events
+
+`contact.subscribed` and `contact.unsubscribed` carry no event data by default. The `event` field is an empty object `{}`.
+
+When an unsubscription is triggered automatically by a bounce or complaint, `event` includes a `reason` field:
+
+```json
+{
+  "reason": "bounce"
+}
+```
+
+| Field | Value |
+| --- | --- |
+| `reason` | `"bounce"` or `"complaint"` when the system triggered the unsubscription |
+
+### Segment events
+
+Both `segment.<name>.entry` and `segment.<name>.exit` include:
+
+```json
+{
+  "segmentId": "seg_abc123",
+  "segmentName": "VIP Users"
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `segmentId` | The ID of the segment |
+| `segmentName` | The display name of the segment |
+
+### Custom events
+
+Custom events tracked via the API include whatever data you passed in the `data` field of the `/v1/track` call.
+
+## Common use cases
+
+### Bounce and complaint monitoring
+
+Create workflows triggered by `email.bounce` and `email.complaint` to keep your own database in sync with Plunk's contact statuses. Because only `Permanent` bounces count toward your bounce rate, you can use a **Condition** step to filter for `bounceType === "Permanent"` before forwarding to your webhook endpoint.
+
+### Syncing unsubscribes
+
+Trigger a workflow on `contact.unsubscribed` to notify your application whenever a contact opts out. This is useful when you manage subscription preferences across multiple systems and need to keep them consistent.
+
+### Custom event forwarding
+
+If you track custom events in Plunk (e.g. `user.signup`, `order.completed`), you can forward those events to other services using webhooks. Track once in Plunk, distribute to as many endpoints as you need.
+
+## Adding conditions and delays
+
+Because webhooks are workflow steps, you can combine them with other step types:
+
+- **Condition step**: Only fire the webhook when specific criteria are met — for example, only for contacts with `plan = "pro"`, or only for `Permanent` bounces.
+- **Delay step**: Add a time buffer before the webhook fires.
+- **Wait for Event step**: Pause the workflow until a follow-up event occurs — for example, wait to see if a bounced contact re-subscribes before notifying your system.

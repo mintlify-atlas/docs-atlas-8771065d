@@ -1,0 +1,53 @@
+---
+title: "Tracking"
+description: "Configure open and click tracking to measure engagement across your emails."
+icon: "chart-line"
+---
+
+Plunk provides built-in open and click tracking for emails sent through campaigns and transactional sends. Tracking data appears in campaign analytics and can trigger workflows via `email.open` and `email.click` events.
+
+## Open tracking
+
+When open tracking is enabled, Plunk embeds a small invisible image (a 1×1 pixel) in each outgoing email. When the recipient's email client loads the image, Plunk records an open event for that contact.
+
+### Limitations to be aware of
+
+- **Image blocking**: If a recipient has disabled automatic image loading in their email client, the pixel will not load and the open will not be recorded. Open rates are always an undercount.
+- **Pre-loading**: Some email clients and security scanners pre-fetch images before the recipient sees the message. This can produce open events that do not represent a human opening the email. Apple Mail Privacy Protection is a well-known example.
+
+Open tracking data is therefore best used as a directional signal, not a precise measurement.
+
+## Click tracking
+
+Plunk rewrites links in your emails to point to Plunk's tracking servers. When a contact clicks a link, Plunk records the click event, then immediately redirects them to the original URL. This is transparent to the recipient.
+
+The `email.click` event includes the original destination URL in the `link` field.
+
+### Limitations to be aware of
+
+- **Security software**: Some corporate email gateways and endpoint security tools follow every link in an incoming email to check for malware. This can generate click events that do not represent a contact clicking the link.
+- **URL length**: Rewritten tracking URLs are longer than the original. This is rarely a problem but worth noting if you have strict URL length requirements.
+
+## Configuration levels
+
+Tracking is configured at the project level in **Project Settings → Tracking**. There are three levels:
+
+| Level | Behavior |
+| --- | --- |
+| **Enabled** | Open and click tracking is active for all emails sent from this project |
+| **Disabled** | No tracking pixels or link rewriting. No open or click events are generated |
+| **Marketing only** | Tracking applies only to emails sent via templates and campaigns. Transactional emails sent via the API are not tracked |
+
+<Tip>
+  Use **Marketing only** if you send a mix of transactional emails (where untracked delivery is preferable) and marketing campaigns (where engagement data is valuable). This keeps transactional links clean while still capturing campaign analytics.
+</Tip>
+
+## Tracking data in analytics
+
+For campaigns, open and click data appears on the campaign's analytics page in the dashboard, including:
+
+- Open rate and total unique opens
+- Click rate and total unique clicks
+- Per-link click counts
+
+You can also receive tracking events in real time by setting up workflows triggered by `email.open` or `email.click`. See [Webhooks](/guides/webhooks) for how to forward these events to your own application.

@@ -1,0 +1,318 @@
+---
+title: 'Send Email'
+description: 'Send transactional emails via the Plunk API'
+---
+
+Send individual or bulk transactional emails to one or more recipients. The sender address must belong to a verified domain on your project.
+
+<Note>
+  This endpoint requires a **secret key** (`sk_*`). Never expose your secret key in client-side code.
+</Note>
+
+## POST /v1/send
+
+<ParamField body="to" type="string | object | array" required>
+  Recipient email address(es). Accepts three formats:
+
+  - **String**: `"user@example.com"`
+  - **Object**: `{ "name": "Jane Doe", "email": "user@example.com" }`
+  - **Array**: mix of strings and objects
+
+  <Expandable title="Object properties">
+    <ParamField body="to.email" type="string" required>
+      Recipient email address.
+    </ParamField>
+    <ParamField body="to.name" type="string">
+      Recipient display name. Used to populate the `{{name}}` template variable automatically.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="subject" type="string">
+  Email subject line. Required unless a `template` is specified. Supports `{{variable}}` syntax.
+</ParamField>
+
+<ParamField body="body" type="string">
+  HTML email body. Required unless a `template` is specified. Supports `{{variable}}` syntax.
+</ParamField>
+
+<ParamField body="template" type="string">
+  ID of a saved template to use as the email's subject, body, from address, and reply-to. You can override any of these by providing the corresponding field in the request.
+</ParamField>
+
+<ParamField body="from" type="string | object">
+  Sender email address. Required unless the specified template already has a `from` address configured. The domain must be verified on your project.
+
+  Accepts a plain email string or an object with `name` and `email`.
+
+  <Expandable title="Object properties">
+    <ParamField body="from.email" type="string" required>
+      Sender email address.
+    </ParamField>
+    <ParamField body="from.name" type="string">
+      Sender display name.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="name" type="string">
+  Sender display name. Alternative to `from.name` — used when `from` is provided as a plain string.
+</ParamField>
+
+<ParamField body="reply" type="string">
+  Reply-to email address.
+</ParamField>
+
+<ParamField body="subscribed" type="boolean" default="false">
+  Sets the recipient's subscription status. Defaults to `false` for transactional emails, which means new contacts are created as unsubscribed. Set to `true` to opt them in to marketing emails.
+</ParamField>
+
+<ParamField body="headers" type="object">
+  Custom email headers as key-value pairs. Values must be strings.
+</ParamField>
+
+<ParamField body="data" type="object">
+  Template variables and contact data. Simple values (`"key": "value"`) are saved to the contact record. To pass a value to the template without saving it to the contact, use the non-persistent format.
+
+  <Expandable title="Non-persistent field format">
+```json
+{
+  "success": true,
+  "data": {
+    "emails": [
+      {
+        "contact": {
+          "id": "clx_contact_abc123",
+          "email": "user@example.com"
+        },
+        "email": "clx_email_xyz789"
+      }
+    ],
+    "timestamp": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+---
+
+## POST /v1/verify
+
+Validates an email address for deliverability. Checks for disposable domains, MX record existence, and common typos.
+
+<Note>
+  This endpoint requires a **secret key** (`sk_*`).
+</Note>
+
+<ParamField body="email" type="string" required>
+  The email address to verify.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">`true` when the request succeeded.</ResponseField>
+<ResponseField name="data" type="object">
+  <Expandable title="properties">
+    <ResponseField name="email" type="string">The email address that was verified.</ResponseField>
+    <ResponseField name="valid" type="boolean">Whether the email appears to be valid and deliverable.</ResponseField>
+    <ResponseField name="isDisposable" type="boolean">Whether the domain is a known disposable email provider.</ResponseField>
+    <ResponseField name="hasMxRecords" type="boolean">Whether the domain has MX records configured.</ResponseField>
+    <ResponseField name="suggestedEmail" type="string">Suggested correction if a typo was detected (e.g. `user@gmail.com` for `user@gmial.com`).</ResponseField>
+    <ResponseField name="reasons" type="string[]">Human-readable descriptions of any issues found.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash Example
+curl --request POST \
+  --url https://next-api.useplunk.com/v1/verify \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{ "email": "user@gmial.com" }'
+```
+
+```json 200
+{
+  "success": true,
+  "data": {
+    "email": "user@gmial.com",
+    "valid": false,
+    "isDisposable": false,
+    "hasMxRecords": false,
+    "suggestedEmail": "user@gmail.com",
+    "reasons": [
+      "Possible typo detected, did you mean user@gmail.com?",
+      "Domain does not exist or has no MX records"
+    ]
+  }
+}
+```
+    Non-persistent values are available in the template via `{{orderId}}` but are not stored on the contact.
+  </Expandable>
+
+  **System variables** are automatically available in every template:
+
+  | Variable | Description |
+  |---|---|
+  | `{{id}}` | Contact ID |
+  | `{{email}}` | Contact email |
+  | `{{unsubscribeUrl}}` | One-click unsubscribe link |
+  | `{{subscribeUrl}}` | Re-subscribe link |
+  | `{{manageUrl}}` | Subscription management page |
+
+  **Fallback syntax**: use `{{field ?? default}}` to provide a default if the variable is missing.
+</ParamField>
+
+<ParamField body="attachments" type="array">
+  Email attachments. Maximum 10 attachments, 10 MB total.
+
+  <Expandable title="Attachment properties">
+    <ParamField body="attachments[].filename" type="string" required>
+      Attachment filename (max 255 characters).
+    </ParamField>
+    <ParamField body="attachments[].content" type="string" required>
+      Base64-encoded file content.
+    </ParamField>
+    <ParamField body="attachments[].contentType" type="string" required>
+      MIME type, e.g. `application/pdf`, `image/png` (max 255 characters).
+    </ParamField>
+    <ParamField body="attachments[].disposition" type="string" default="attachment">
+      Attachment disposition. `attachment` (default) adds it as a downloadable file. `inline` embeds it in the email body (requires `contentId`).
+    </ParamField>
+    <ParamField body="attachments[].contentId" type="string">
+      Content ID for inline attachments. Required when `disposition` is `inline`. Used to reference the attachment in the HTML body via `<img src="cid:yourContentId">`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  `true` when the request was accepted.
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  <Expandable title="properties">
+    <ResponseField name="emails" type="array" required>
+      One entry per recipient.
+
+      <Expandable title="Email entry properties">
+        <ResponseField name="contact" type="object">
+          <Expandable title="properties">
+            <ResponseField name="id" type="string">
+              Contact ID.
+            </ResponseField>
+            <ResponseField name="email" type="string">
+              Contact email address.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        <ResponseField name="email" type="string">
+          Email record ID.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="timestamp" type="string">
+      ISO 8601 timestamp when the request was processed.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Examples
+
+<CodeGroup>
+
+```bash Single recipient
+curl --request POST \
+  --url https://next-api.useplunk.com/v1/send \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "to": "user@example.com",
+    "from": {
+      "name": "My App",
+      "email": "hello@myapp.com"
+    },
+    "subject": "Your password reset code",
+    "body": "<h1>Reset your password</h1><p>Your code: <strong>{{resetCode}}</strong></p><p><a href=\"{{unsubscribeUrl}}\">Unsubscribe</a></p>",
+    "data": {
+      "resetCode": { "value": "ABC-123", "persistent": false }
+    }
+  }'
+```
+
+```bash Multiple recipients
+curl --request POST \
+  --url https://next-api.useplunk.com/v1/send \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "to": [
+      { "name": "Jane Doe", "email": "jane@example.com" },
+      { "name": "John Smith", "email": "john@example.com" }
+    ],
+    "from": {
+      "name": "My App",
+      "email": "hello@myapp.com"
+    },
+    "subject": "Account update",
+    "body": "<p>Hello {{name}}, your account has been updated.</p>"
+  }'
+```
+
+```bash With template
+curl --request POST \
+  --url https://next-api.useplunk.com/v1/send \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "to": "user@example.com",
+    "template": "clx123abc456",
+    "data": {
+      "firstName": "Jane",
+      "orderId": { "value": "ORD-9876", "persistent": false }
+    }
+  }'
+```
+
+```bash With attachment
+curl --request POST \
+  --url https://next-api.useplunk.com/v1/send \
+  --header 'Authorization: Bearer sk_live_yourkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "to": "user@example.com",
+    "from": "billing@myapp.com",
+    "subject": "Your invoice",
+    "body": "<p>Please find your invoice attached.</p>",
+    "attachments": [
+      {
+        "filename": "invoice-2024-01.pdf",
+        "content": "JVBERi0xLjQKJeL...",
+        "contentType": "application/pdf"
+      }
+    ]
+  }'
+```
+
+</CodeGroup>
+
+### Example response
+
+```json 200
+{
+  "success": true,
+  "data": {
+    "emails": [
+      {
+        "contact": {
+          "id": "clx_contact_abc123",
+          "email": "user@example.com"
+        },
+        "email": "clx_email_xyz789"
+      }
+    ],
+    "timestamp": "2024-01-15T10:30:00.000Z"
+  }
+}
+```

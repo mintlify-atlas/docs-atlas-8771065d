@@ -1,0 +1,129 @@
+---
+title: 'Track Event'
+description: 'Track events for contacts to trigger workflows and automations'
+---
+
+Track a named event for a contact. If the contact does not exist, it is created automatically. Matching workflows are triggered immediately after the event is recorded.
+
+<Note>
+  This endpoint accepts both **public keys** (`pk_*`) and **secret keys** (`sk_*`). Use a public key for client-side tracking (browser, mobile) and a secret key for server-side calls.
+</Note>
+
+## POST /v1/track
+
+<ParamField body="email" type="string" required>
+  The contact's email address. If no contact with this email exists in the project, a new one is created.
+</ParamField>
+
+<ParamField body="event" type="string" required>
+  Event name, e.g. `signed_up`, `purchased`, `plan_upgraded`. Must not be a reserved system event name.
+
+  <Warning>
+    The following event name patterns are reserved and cannot be tracked manually:
+    - `email.*` — e.g. `email.sent`, `email.delivery`, `email.open`, `email.click`, `email.bounce`, `email.complaint`, `email.received`
+    - `contact.subscribed`, `contact.unsubscribed`
+    - `segment.<slug>.entry`, `segment.<slug>.exit`
+  </Warning>
+</ParamField>
+
+<ParamField body="subscribed" type="boolean" default="true">
+  Sets the contact's subscription status. For new contacts this defaults to `true`. For existing contacts the value is only updated when this field is explicitly provided; omitting it preserves the current subscription state.
+</ParamField>
+
+<ParamField body="data" type="object">
+  Custom data associated with the event and contact. Simple values are saved to the contact record (persistent). Use the non-persistent format for values that should only be available within workflows triggered by this event.
+
+  <Expandable title="Non-persistent field format">
+    ```json
+    {
+      "receiptUrl": { "value": "https://example.com/receipt/123", "persistent": false }
+    }
+    ```
+    Non-persistent values flow to the workflow execution context but are not stored on the contact.
+  </Expandable>
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  `true` when the event was tracked successfully.
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+  <Expandable title="properties">
+    <ResponseField name="contact" type="string" required>
+      ID of the contact the event was recorded against.
+    </ResponseField>
+    <ResponseField name="event" type="string" required>
+      ID of the newly created event record.
+    </ResponseField>
+    <ResponseField name="timestamp" type="string" required>
+      ISO 8601 timestamp when the event was recorded.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Examples
+
+<CodeGroup>
+
+```bash Basic event
+curl --request POST \
+  --url https://next-api.useplunk.com/v1/track \
+  --header 'Authorization: Bearer pk_live_yourpublickey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "email": "user@example.com",
+    "event": "signed_up"
+  }'
+```
+
+```bash With data
+curl --request POST \
+  --url https://next-api.useplunk.com/v1/track \
+  --header 'Authorization: Bearer sk_live_yoursecretkey' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "email": "user@example.com",
+    "event": "purchased",
+    "data": {
+      "plan": "pro",
+      "totalSpent": 1500,
+      "orderId": { "value": "ORD-9876", "persistent": false }
+    }
+  }'
+```
+
+```javascript Browser (public key)
+await fetch('https://next-api.useplunk.com/v1/track', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer pk_live_yourpublickey',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    email: 'user@example.com',
+    event: 'button_clicked',
+    data: {
+      buttonId: 'upgrade-cta',
+    },
+  }),
+});
+```
+
+</CodeGroup>
+
+### Example response
+
+```json 200
+{
+  "success": true,
+  "data": {
+    "contact": "clx_contact_abc123",
+    "event": "clx_event_xyz789",
+    "timestamp": "2024-01-15T10:30:00.000Z"
+  }
+}
+```

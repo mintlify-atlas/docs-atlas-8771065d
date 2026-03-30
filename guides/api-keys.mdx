@@ -1,0 +1,97 @@
+---
+title: "API keys"
+description: "Understand the two key types in Plunk and how to use them securely."
+icon: "key"
+---
+
+Every Plunk project has two API keys: a **secret key** and a **public key**. Each key controls a different level of access to the API.
+
+## Key types
+
+### Secret key (`sk_*`)
+
+The secret key grants full access to all API endpoints. Use it server-side only — in your backend, serverless functions, or CI pipelines. Never expose it in client-side code, browser bundles, or mobile apps.
+
+<Warning>
+  If your secret key is compromised, an attacker can read and modify your project data, send emails on your behalf, and access all contacts. Treat it like a password.
+</Warning>
+
+### Public key (`pk_*`)
+
+The public key is restricted to a single endpoint: [`/v1/track`](/api-reference/endpoints/track). It is safe to expose in client-side applications because it can only track events — it cannot read or modify any project data.
+
+## Which key to use
+
+| Endpoint | Key required |
+| --- | --- |
+| `/v1/track` (event tracking) | Public key (`pk_*`) or secret key |
+| All other endpoints | Secret key (`sk_*`) |
+
+## Passing a key in requests
+
+All API requests authenticate using the `Authorization` header with a Bearer token.
+
+```bash
+Authorization: Bearer sk_your_secret_key
+```
+
+Example request:
+
+```bash
+curl -X POST https://api.useplunk.com/v1/send \
+  -H "Authorization: Bearer sk_your_secret_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "user@example.com",
+    "subject": "Hello",
+    "body": "<p>Welcome!</p>"
+  }'
+```
+
+For client-side event tracking using your public key:
+
+```javascript
+fetch("https://api.useplunk.com/v1/track", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer pk_your_public_key",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    event: "user.signup",
+    email: "user@example.com",
+  }),
+});
+```
+
+## Managing API keys in the dashboard
+
+You can find your API keys in **Project Settings → API Keys**.
+
+<Steps>
+  <Step title="Open project settings">
+    In the dashboard sidebar, click **Settings** for your project.
+  </Step>
+  <Step title="Navigate to API Keys">
+    Select the **API Keys** tab. Your public key and secret key are both displayed here.
+  </Step>
+  <Step title="Copy the key">
+    Click the copy icon next to the key you need. Store it securely — use environment variables in your application, not hardcoded strings.
+  </Step>
+</Steps>
+
+## Regenerating keys
+
+If you believe a key has been compromised, regenerate it immediately from **Project Settings → API Keys**.
+
+<Warning>
+  Regenerating a key invalidates **both** the secret and public keys at the same time. Update all applications using the old keys before or immediately after regenerating to avoid downtime.
+</Warning>
+
+## Security best practices
+
+- Store secret keys in environment variables, not in source code or version control.
+- Use the public key in any code that runs in the browser or on a user's device.
+- Rotate keys periodically as part of your security hygiene.
+- Audit access logs if you suspect unauthorized use.
+- Never log API keys in application output or error messages.

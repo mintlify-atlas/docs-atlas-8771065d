@@ -1,97 +1,66 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Welcome to Plunk"
+description: "The open-source email platform for transactional emails, campaigns, and marketing automation — built on AWS SES."
 ---
 
-## Setting up
+Plunk is an open-source email platform that gives you everything you need to send transactional emails, run campaigns, and automate email workflows. It's a self-hostable alternative to services like SendGrid, Resend, and Mailgun — built on top of AWS SES.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Send your first email in minutes. Get your API key and make your first API call.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Explore the full REST API for sending emails, managing contacts, and more.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Core Features" icon="stars" href="/features/transactional-emails">
+    Learn about transactional emails, campaigns, workflows, and contact management.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Self-Hosting" icon="server" href="/self-hosting/introduction">
+    Deploy Plunk on your own infrastructure using Docker and AWS SES.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What you can do with Plunk
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Transactional Emails" icon="envelope" href="/features/transactional-emails">
+    Send one-to-one emails via API — password resets, order confirmations, notifications — with template support and variable substitution.
+  </Card>
+  <Card title="Email Campaigns" icon="bullhorn" href="/features/campaigns">
+    Broadcast newsletters and product updates to your entire list or targeted segments.
+  </Card>
+  <Card title="Workflow Automation" icon="diagram-project" href="/features/workflows">
+    Build automated email sequences triggered by events, with delays, conditions, and webhook steps.
+  </Card>
+  <Card title="Contact Management" icon="users" href="/features/contacts-and-segments">
+    Manage millions of contacts with custom data fields, CSV import, and dynamic segments.
+  </Card>
+  <Card title="Email Templates" icon="file-code" href="/features/templates">
+    Create reusable templates for both transactional and marketing emails.
+  </Card>
+  <Card title="Event Tracking" icon="chart-line" href="/guides/tracking">
+    Track opens, clicks, bounces, and custom events to measure engagement and trigger automations.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Get started in 3 steps
 
-## Need inspiration?
+<Steps>
+  <Step title="Create a project and get your API key">
+    Sign up, create a project, and generate a secret API key from the dashboard. See [API Keys](/guides/api-keys) for details.
+  </Step>
+  <Step title="Verify your sending domain">
+    Add your domain and configure the required DNS records (DKIM, SPF, MX) to start sending from your own address. See [Verifying Domains](/guides/verifying-domains).
+  </Step>
+  <Step title="Send your first email">
+    Use the `/v1/send` endpoint to send a transactional email, or `/v1/track` to track a contact event and trigger a workflow. See the [Quick Start](/quickstart) guide.
+  </Step>
+</Steps>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
+## Open source
+
+Plunk is fully open source under the AGPL-3.0 license. You can self-host it on your own infrastructure or use the hosted version at [useplunk.com](https://www.useplunk.com).
+
+<Card title="View on GitHub" icon="github" href="https://github.com/useplunk/plunk">
+  Browse the source code, open issues, and contribute to Plunk.
 </Card>

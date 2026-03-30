@@ -1,0 +1,164 @@
+---
+title: 'Overview'
+description: 'Base URLs, request format, response envelope, pagination, and rate limits for the Plunk API.'
+---
+
+## Base URL
+
+<Tabs>
+  <Tab title="Hosted (Plunk Cloud)">
+    ```
+    https://next-api.useplunk.com
+    ```
+  </Tab>
+  <Tab title="Self-hosted">
+    ```
+    https://your-domain.com
+    ```
+
+    Replace `your-domain.com` with the domain you configured when deploying Plunk.
+  </Tab>
+</Tabs>
+
+## API groups
+
+The Plunk API has two groups of endpoints that serve different purposes.
+
+<CardGroup cols={2}>
+  <Card title="Public API" icon="bolt" href="/api-reference/endpoints/send">
+    For use in your application code. Endpoints are versioned under `/v1/`.
+
+    - `POST /v1/send` — send transactional email
+    - `POST /v1/track` — track an event for a contact
+  </Card>
+  <Card title="Dashboard API" icon="layout-dashboard" href="/api-reference/endpoints/contacts">
+    For managing your Plunk project. Endpoints are unversioned.
+
+    Covers contacts, templates, campaigns, segments, workflows, events, and domains.
+  </Card>
+</CardGroup>
+
+<Note>
+  The Public API accepts both secret keys (`sk_*`) and public keys (`pk_*`), depending on the endpoint. The Dashboard API requires a secret key for all requests. See [Authentication](/api-reference/authentication) for details.
+</Note>
+
+## Request format
+
+All requests must include the `Content-Type: application/json` header and send a JSON body where applicable.
+
+```bash
+curl -X POST https://next-api.useplunk.com/v1/send \
+  -H "Authorization: Bearer sk_your_secret_key" \
+  -H "Content-Type: application/json" \
+  -d '{"to": "user@example.com", "subject": "Hello", "body": "<p>Hi there</p>"}'
+```
+
+## Response format
+
+Every response from the Plunk API uses a consistent envelope, making it straightforward to check for success or handle errors without inspecting HTTP status codes alone.
+
+### Success
+
+```json
+{
+  "success": true,
+  "data": {
+    "contact": "cnt_abc123",
+    "event": "evt_xyz789",
+    "timestamp": "2025-11-30T10:30:00.000Z"
+  }
+}
+```
+
+List endpoints include pagination metadata alongside the items:
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "nextCursor": "abc123",
+    "hasMore": true,
+    "total": 1000
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "statusCode": 422,
+    "requestId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+    "errors": [
+      {
+        "field": "email",
+        "message": "Invalid email",
+        "code": "invalid_string"
+      }
+    ],
+    "suggestion": "One or more fields have incorrect types."
+  },
+  "timestamp": "2025-11-30T10:30:00.000Z"
+}
+```
+
+| Field | Description |
+|---|---|
+| `success` | `false` for all error responses |
+| `error.code` | Machine-readable error code for programmatic handling |
+| `error.message` | Human-readable description of the error |
+| `error.statusCode` | HTTP status code |
+| `error.requestId` | Unique identifier for this request — include it when contacting support |
+| `error.errors` | Array of field-level validation details (present on `VALIDATION_ERROR` only) |
+| `error.suggestion` | Guidance for resolving the error |
+| `timestamp` | ISO 8601 timestamp of when the error occurred |
+
+See the [Error codes reference](/api-reference/errors) for a complete list of codes and example responses.
+
+## Pagination
+
+List endpoints use cursor-based pagination. Pass `limit` and `cursor` as query parameters.
+
+```bash
+GET /contacts?limit=50&cursor=abc123
+```
+
+| Parameter | Default | Maximum | Description |
+|---|---|---|---|
+| `limit` | `20` | `100` | Number of items to return |
+| `cursor` | — | — | Cursor value from the previous response's `nextCursor` field |
+
+When `hasMore` is `false` in the response, you have reached the last page.
+
+## Rate limits
+
+| Limit | Value |
+|---|---|
+| Email sending | 14 emails per second (AWS SES default) |
+| API requests | 1,000 requests per minute per project |
+
+Bulk operations such as campaign sends are automatically queued for background processing and do not consume your per-minute request budget.
+
+When you exceed a limit, the API returns a `429 Too Many Requests` response with error code `RATE_LIMIT_EXCEEDED`. Implement exponential backoff before retrying.
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api-reference/authentication">
+    Learn how to obtain and use your API keys.
+  </Card>
+  <Card title="Error codes" icon="circle-exclamation" href="/api-reference/errors">
+    Complete reference for all error codes and troubleshooting guidance.
+  </Card>
+  <Card title="Send an email" icon="envelope" href="/api-reference/endpoints/send">
+    Send your first transactional email with `POST /v1/send`.
+  </Card>
+  <Card title="Track an event" icon="chart-line" href="/api-reference/endpoints/track">
+    Track contact activity with `POST /v1/track`.
+  </Card>
+</CardGroup>

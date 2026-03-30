@@ -1,0 +1,128 @@
+---
+title: "Environment variables"
+description: "Complete reference for all environment variables used when self-hosting Plunk."
+---
+
+All environment variables are set in your `.env` file at the same level as `docker-compose.yml`. The Compose file reads them and injects them into the running containers.
+
+<Tip>
+  Start from the example file: `curl -O https://raw.githubusercontent.com/useplunk/plunk/next/.env.self-host.example`
+</Tip>
+
+## Security and database
+
+| Variable | Required | Description | Default / Example |
+|----------|----------|-------------|-------------------|
+| `JWT_SECRET` | Yes | Secret key used to sign and verify JWT tokens. Generate a secure value with `openssl rand -base64 32`. | — |
+| `DB_PASSWORD` | Yes | PostgreSQL password for the `plunk` database user. Used by both the `postgres` container and the connection string auto-assembled by the Compose file. | `changeme123` |
+| `DATABASE_URL` | Yes | Full PostgreSQL connection string. In Docker Compose this is assembled automatically from `DB_PASSWORD`. | `postgresql://plunk:password@postgres:5432/plunk` |
+| `REDIS_URL` | Yes | Redis connection string. | `redis://redis:6379` |
+| `PORT` | No | Port the API server listens on inside the container. | `8080` |
+
+## URLs and domains
+
+The entrypoint script constructs all internal and client-side URLs from these domain variables at container startup. You do not need to set `*_URI` or `NEXT_PUBLIC_*` variables manually.
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `API_DOMAIN` | Yes | Subdomain for the API server. | `api.yourdomain.com` |
+| `DASHBOARD_DOMAIN` | Yes | Subdomain for the Next.js dashboard. | `app.yourdomain.com` |
+| `LANDING_DOMAIN` | No | Subdomain for the landing page. | `www.yourdomain.com` |
+| `WIKI_DOMAIN` | No | Subdomain for the documentation site. | `docs.yourdomain.com` |
+| `USE_HTTPS` | No | Set to `true` when running behind a TLS-terminating reverse proxy. Determines whether URLs are constructed with `https://` or `http://`. | `false` |
+
+## AWS SES
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `AWS_SES_REGION` | Yes | AWS region where SES is configured. | `us-east-1` |
+| `AWS_SES_ACCESS_KEY_ID` | Yes | Access key ID for the IAM user with SES send permissions. | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SES_SECRET_ACCESS_KEY` | Yes | Secret access key for the IAM user. | `wJalrXUtnFEMI/K7MDENG/bPxRfiCY...` |
+| `SES_CONFIGURATION_SET` | No | SES configuration set name used for emails with open and click tracking enabled. | `plunk-configuration-set` |
+| `SES_CONFIGURATION_SET_NO_TRACKING` | No | A second SES configuration set used for emails when tracking is disabled. When set, projects can toggle tracking on/off. If omitted, the tracking toggle is hidden in project settings. | `plunk-no-tracking-configuration-set` |
+
+See [Email setup](/self-hosting/email-setup) for instructions on creating these configuration sets.
+
+## Storage (Minio)
+
+Minio is included in the Docker Compose stack and works with the defaults below. Only change these if you are connecting to an external S3-compatible bucket.
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `MINIO_ROOT_USER` | No | Minio root username. | `plunk` |
+| `MINIO_ROOT_PASSWORD` | No | Minio root password. | `plunkminiopass` |
+| `MINIO_API_PORT` | No | Host port mapped to the Minio S3 API. | `9000` |
+| `MINIO_CONSOLE_PORT` | No | Host port mapped to the Minio console UI. | `9001` |
+| `S3_ENDPOINT` | No | S3 or Minio endpoint URL as seen from inside the Plunk container. | `http://minio:9000` |
+| `S3_ACCESS_KEY_ID` | No | Access key for the S3 bucket. | `plunk` |
+| `S3_ACCESS_KEY_SECRET` | No | Secret key for the S3 bucket. | `plunkminiopass` |
+| `S3_BUCKET` | No | Bucket name for file uploads. | `uploads` |
+| `S3_PUBLIC_URL` | No | Publicly accessible base URL for stored files. Set this to the externally reachable URL of your Minio instance or S3 bucket. | `http://localhost:9000/uploads` |
+| `S3_FORCE_PATH_STYLE` | No | Use path-style URLs (`endpoint/bucket/key`) instead of virtual-hosted style. Required for Minio. | `true` |
+
+## SMTP server
+
+The optional SMTP relay lets users send emails through Plunk using any SMTP client. It is not required for the core platform to work.
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `SMTP_DOMAIN` | No | SMTP relay domain. Required when using Traefik's `acme.json` so Plunk can select the correct certificate for this domain. Setting a non-localhost value also automatically enables SMTP features in the dashboard. | `localhost` |
+| `SMTP_ENABLED` | No | Explicitly enable SMTP features in the dashboard UI. Automatically enabled when `SMTP_DOMAIN` is set to a non-localhost value. | `false` |
+| `PORT_SECURE` | No | Host port for SMTPS (implicit TLS). | `465` |
+| `PORT_SUBMISSION` | No | Host port for SMTP submission (STARTTLS). | `587` |
+| `MAX_RECIPIENTS` | No | Maximum number of recipients allowed per email through the SMTP relay. | `5` |
+
+## OAuth (optional)
+
+Enables social login on the dashboard sign-in page. Register an OAuth app with each provider you want to support.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_OAUTH_CLIENT` | No | GitHub OAuth app client ID. |
+| `GITHUB_OAUTH_SECRET` | No | GitHub OAuth app client secret. |
+| `GOOGLE_OAUTH_CLIENT` | No | Google OAuth app client ID. |
+| `GOOGLE_OAUTH_SECRET` | No | Google OAuth app client secret. |
+
+## Stripe (optional)
+
+Required only if you want to enable billing features. All five variables must be set for billing to activate.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `STRIPE_SK` | No | Stripe secret key. |
+| `STRIPE_WEBHOOK_SECRET` | No | Stripe webhook signing secret for verifying incoming events. |
+| `STRIPE_PRICE_ONBOARDING` | No | Stripe price ID for the one-time onboarding fee. |
+| `STRIPE_PRICE_EMAIL_USAGE` | No | Stripe price ID for metered pay-per-email usage. |
+| `STRIPE_METER_EVENT_NAME` | No | Stripe meter event name used when reporting usage. | `emails` |
+
+## Platform emails (optional)
+
+When configured, Plunk sends email notifications to users for critical events such as a project being suspended or billing limits being reached. Without these variables, only ntfy notifications are sent.
+
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `PLUNK_API_KEY` | No | API key for a Plunk instance used to send transactional notification emails. | `pk_...` |
+| `PLUNK_FROM_ADDRESS` | No | From address for platform notification emails. | `noreply@yourdomain.com` |
+
+## Notifications (ntfy)
+
+Plunk bundles a self-hosted [ntfy](https://ntfy.sh) server for internal system notifications.
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `NTFY_PORT` | No | Host port for the ntfy web UI and API. | `8080` |
+| `NTFY_URL` | No | ntfy topic URL that Plunk publishes notifications to. Change this to use an external ntfy.sh server or your own instance. | `http://ntfy/plunk-notifications` |
+
+## User management
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `DISABLE_SIGNUPS` | No | When `true`, the signup endpoint rejects new registration attempts. Useful for private instances where you want to manage users manually. | `false` |
+| `VERIFY_EMAIL_ON_SIGNUP` | No | When `true`, validates email addresses on signup — checks for disposable domains, plus-addressing, domain existence, and valid MX records. | `false` |
+
+## Security
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `AUTO_PROJECT_DISABLE` | No | When `true`, projects are automatically suspended when bounce or complaint rates exceed thresholds. Set to `false` to receive notifications without automatic suspension. | `true` |
+| `EMAIL_RATE_LIMIT_PER_SECOND` | No | Override the email sending rate limit (emails per second). If not set, Plunk queries your AWS SES account quota automatically. | — |

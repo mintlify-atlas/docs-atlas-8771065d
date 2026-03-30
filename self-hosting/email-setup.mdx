@@ -1,0 +1,226 @@
+---
+title: "Email setup"
+description: "Configure AWS SES for self-hosted Plunk: IAM credentials, configuration sets, SNS topics, and bounce handling."
+---
+
+Plunk uses AWS Simple Email Service (SES) for all email delivery. You need an AWS account with SES available in your target region before you can send any emails.
+
+<Note>
+  SES is available in a limited set of AWS regions. Check the [AWS regional services list](https://aws.amazon.com/about-aws/global-infrastructure/regional-product-services/) to confirm availability in your preferred region before proceeding.
+</Note>
+
+## Step 1: Move SES out of sandbox mode
+
+New AWS accounts start in SES sandbox mode. In sandbox mode, you can only send email to verified email addresses, which makes it unsuitable for production use.
+
+To request production access:
+
+<Steps>
+  <Step title="Open a support request">
+    Go to the [SES console](https://console.aws.amazon.com/ses/) and navigate to **Account dashboard**. Click **Request production access**.
+  </Step>
+  <Step title="Fill in the request form">
+    Describe your use case (transactional emails, not marketing bulk mail), your expected sending volume, and how you handle bounces and complaints. AWS reviews these requests manually.
+  </Step>
+  <Step title="Wait for approval">
+    Approval typically takes 24–48 hours. You will receive an email from AWS Support when your account is approved.
+  </Step>
+</Steps>
+
+<Warning>
+  Do not skip this step. SES sandbox mode prevents sending to unverified recipients and will cause delivery failures for your users.
+</Warning>
+
+## Step 2: Create an IAM user
+
+Plunk needs an AWS IAM user with permission to send email via SES and manage domain identities.
+
+<Steps>
+  <Step title="Create the user">
+    Go to the [IAM console](https://console.aws.amazon.com/iam/) → **Users** → **Create user**.
+
+    Name the user `plunk-ses` (or any name you prefer). Select **Attach policies directly**.
+  </Step>
+  <Step title="Attach a custom policy">
+    Create a new inline policy with the following JSON:
+
+    ```json
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ses:SetIdentityMailFromDomain",
+            "ses:GetIdentityDkimAttributes",
+            "ses:SendRawEmail",
+            "ses:GetIdentityVerificationAttributes",
+            "ses:VerifyDomainDkim",
+            "ses:ListIdentities",
+            "ses:SetIdentityFeedbackForwardingEnabled"
+          ],
+          "Resource": "*"
+        }
+      ]
+    }
+    ```
+  </Step>
+  <Step title="Create access keys">
+    After the user is created, go to the user's **Security credentials** tab and click **Create access key**. Choose **Application running outside AWS**.
+
+    Save the **Access key ID** and **Secret access key** — you will not be able to view the secret key again.
+  </Step>
+</Steps>
+
+## Step 3: Create an SNS topic
+
+SES delivers bounce, complaint, and delivery events to Plunk via Amazon SNS (Simple Notification Service). You need to create an SNS topic and subscribe it to your Plunk API.
+
+<Steps>
+  <Step title="Create the topic">
+    Go to the [SNS console](https://console.aws.amazon.com/sns/) → **Topics** → **Create topic**.
+
+    - **Type**: Standard
+    - **Name**: `plunk-ses-events`
+
+    Click **Create topic**.
+  </Step>
+  <Step title="Create an HTTPS subscription">
+    On the topic page, click **Create subscription**.
+
+    - **Protocol**: HTTPS
+    - **Endpoint**: `https://api.yourdomain.com/webhooks/sns`
+
+    Replace `api.yourdomain.com` with your actual API domain.
+
+    Click **Create subscription**.
+  </Step>
+  <Step title="Confirm the subscription">
+    Plunk automatically confirms the SNS subscription when it receives the confirmation request. Watch your API container logs:
+
+    ```bash
+    docker compose logs plunk --follow
+    ```
+
+    You should see a log entry confirming the subscription. If confirmation fails, check that your API is publicly reachable at the endpoint URL you provided.
+  </Step>
+</Steps>
+
+## Step 4: Create SES configuration sets
+
+Configuration sets tell SES which events to capture and where to send them. Plunk requires two configuration sets: one for emails with open and click tracking enabled, and one for emails where tracking is disabled.
+
+### Tracking configuration set
+
+<Steps>
+  <Step title="Create the set">
+    Go to the [SES console](https://console.aws.amazon.com/ses/) → **Configuration sets** → **Create set**.
+
+    Name it `plunk-tracking` (or any name — you will reference it in your environment variables).
+  </Step>
+  <Step title="Add an event destination">
+    On the configuration set page, click **Add destination** under **Event destinations**.
+
+    - **Name**: `sns-events`
+    - **Event types**: Sends, Deliveries, Opens, Clicks, Bounces, Complaints
+    - **Destination type**: Amazon SNS
+    - **SNS topic**: Select `plunk-ses-events`
+
+    Save the destination.
+  </Step>
+</Steps>
+
+### No-tracking configuration set
+
+<Steps>
+  <Step title="Create a second set">
+    Create another configuration set. Name it `plunk-no-tracking`.
+  </Step>
+  <Step title="Add an event destination without open/click events">
+    Add an SNS destination using the same `plunk-ses-events` topic, but select only these event types:
+
+    - Sends
+    - Deliveries
+    - Bounces
+    - Complaints
+
+    Do **not** include Opens or Clicks. This prevents SES from injecting tracking pixels and rewriting links.
+  </Step>
+</Steps>
+
+<Note>
+  The no-tracking configuration set is optional. If you only set `SES_CONFIGURATION_SET`, Plunk will always use tracking and the tracking toggle will be hidden in project settings. Set `SES_CONFIGURATION_SET_NO_TRACKING` to enable the toggle.
+</Note>
+
+## Step 5: Configure environment variables
+
+Add your SES credentials and configuration set names to your `.env` file:
+
+```bash
+AWS_SES_REGION="us-east-1"
+AWS_SES_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE"
+AWS_SES_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+SES_CONFIGURATION_SET="plunk-tracking"
+SES_CONFIGURATION_SET_NO_TRACKING="plunk-no-tracking"
+```
+
+## Step 6: Add and verify your domain in Plunk
+
+Once the stack is running and SES is configured, add your sending domain through the Plunk dashboard.
+
+<Steps>
+  <Step title="Open domain settings">
+    Log in to your Plunk instance and go to **Settings** → **Domains** → **Add domain**.
+  </Step>
+  <Step title="Enter your domain">
+    Enter the domain you want to send email from (for example, `yourdomain.com`).
+  </Step>
+  <Step title="Add the DNS records">
+    Plunk will display the DKIM, SPF, and custom MAIL FROM DNS records you need to add. Add these records in your DNS provider's control panel.
+  </Step>
+  <Step title="Verify">
+    Click **Verify** in the Plunk dashboard after adding the DNS records. Propagation can take a few minutes to a few hours depending on your TTL settings.
+  </Step>
+</Steps>
+
+## Bounce and complaint handling
+
+SES tracks bounces and complaints and reports them back to Plunk via the SNS topic you created. Plunk processes these events to:
+
+- Mark contacts as bounced or complained
+- Update per-project bounce and complaint rate metrics
+- Optionally suspend projects that exceed rate thresholds (controlled by `AUTO_PROJECT_DISABLE`)
+
+For this to work, the SNS subscription to `https://api.yourdomain.com/webhooks/sns` must be confirmed and your API must be publicly reachable.
+
+<Warning>
+  AWS requires that senders maintain a bounce rate below 5% and a complaint rate below 0.1%. If these thresholds are exceeded, SES may pause sending on your account. Plunk's bounce tracking and optional `AUTO_PROJECT_DISABLE` setting help you stay within these limits.
+</Warning>
+
+## Sending rate limits
+
+SES enforces a maximum sending rate (emails per second) on your account. By default, Plunk queries the SES API to determine your account's quota and respects it automatically.
+
+If you need to override this — for example, to stay below a lower internal limit — set `EMAIL_RATE_LIMIT_PER_SECOND` in your environment variables:
+
+```bash
+EMAIL_RATE_LIMIT_PER_SECOND=14
+```
+
+You can view your current SES sending limits in the [SES account dashboard](https://console.aws.amazon.com/ses/home#/account).
+
+## Regional considerations
+
+- Choose an SES region geographically close to your server to minimize latency.
+- SES region must match the `AWS_SES_REGION` environment variable.
+- The SNS topic must be in the **same region** as your SES configuration sets.
+- SES is not available in all AWS regions. Verify availability before deploying.
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" icon="sliders" href="/self-hosting/environment-variables">
+    Full reference for all SES-related configuration variables.
+  </Card>
+  <Card title="Docker deployment" icon="docker" href="/self-hosting/docker">
+    How to run the Plunk container stack.
+  </Card>
+</CardGroup>

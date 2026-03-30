@@ -1,80 +1,301 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Send your first email with Plunk in minutes"
 ---
 
-## Get started in three steps
+This guide walks you through getting an API key and making your first two API calls: sending a transactional email and tracking a contact event.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+You need one of the following:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- **Hosted Plunk** — Sign up at [useplunk.com](https://www.useplunk.com) and create a project.
+- **Self-hosted Plunk** — Deploy using Docker and connect to AWS SES. See the [Self-Hosting guide](/self-hosting/introduction).
 
-### Step 2: Deploy your changes
+You also need a **verified sending domain** before you can send email. See [Verifying Domains](/guides/verifying-domains). For testing, you can verify a single email address in the AWS SES console instead of a full domain.
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Step title="Get your API key">
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Open the Plunk dashboard, navigate to your project, and go to **Settings → API Keys**.
 
-### Step 3: Go live
+You'll see two keys:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+- **Secret key (`sk_*`)** — Required for sending email and all other write operations. Keep this server-side and never expose it in client code.
+- **Public key (`pk_*`)** — Only works with the `/v1/track` endpoint. Safe to use in browser JavaScript.
+
+Copy your secret key. You'll use it in the next steps.
+
+<Warning>
+  Your secret key has full access to your project — it can send emails, read contacts, and modify settings. Store it in an environment variable, not in source code.
+</Warning>
+
+</Step>
+
+<Step title="Send a transactional email">
+
+Use `POST /v1/send` to send an email directly from the API. The `from` address must come from a domain you have verified in Plunk.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.useplunk.com/v1/send \
+  -H "Authorization: Bearer sk_your_secret_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "recipient@example.com",
+    "subject": "Welcome to our app",
+    "body": "<h1>Welcome, {{firstName}}!</h1><p>Thanks for signing up.</p>",
+    "from": "hello@yourdomain.com",
+    "name": "Your App",
+    "data": {
+      "firstName": "Jane"
+    }
+  }'
+```
+
+```javascript Node.js
+const response = await fetch('https://api.useplunk.com/v1/send', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.PLUNK_SECRET_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    to: 'recipient@example.com',
+    subject: 'Welcome to our app',
+    body: '<h1>Welcome, {{firstName}}!</h1><p>Thanks for signing up.</p>',
+    from: 'hello@yourdomain.com',
+    name: 'Your App',
+    data: {
+      firstName: 'Jane',
+    },
+  }),
+});
+
+const result = await response.json();
+
+if (!result.success) {
+  throw new Error(`[${result.error.code}] ${result.error.message}`);
+}
+
+console.log('Sent:', result.data.emails);
+```
+
+```python Python
+import os
+import requests
+
+response = requests.post(
+    'https://api.useplunk.com/v1/send',
+    headers={
+        'Authorization': f'Bearer {os.environ["PLUNK_SECRET_KEY"]}',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'to': 'recipient@example.com',
+        'subject': 'Welcome to our app',
+        'body': '<h1>Welcome, {{firstName}}!</h1><p>Thanks for signing up.</p>',
+        'from': 'hello@yourdomain.com',
+        'name': 'Your App',
+        'data': {
+            'firstName': 'Jane',
+        },
+    },
+)
+
+result = response.json()
+
+if not result.get('success'):
+    error = result['error']
+    raise Exception(f"[{error['code']}] {error['message']}")
+
+print('Sent:', result['data']['emails'])
+```
+
+</CodeGroup>
+
+A successful response looks like:
+
+```json
+{
+  "success": true,
+  "data": {
+    "emails": [
+      {
+        "contact": { "id": "cnt_abc123", "email": "recipient@example.com" },
+        "email": "eml_xyz789"
+      }
+    ],
+    "timestamp": "2026-03-30T10:00:00.000Z"
+  }
+}
+```
+
+**Key request fields:**
+
+<ParamField body="to" type="string | object | array" required>
+  Recipient email address. Accepts a string (`"user@example.com"`), an object with name and email (`{"name": "Jane", "email": "user@example.com"}`), or an array of either for multiple recipients.
+</ParamField>
+
+<ParamField body="subject" type="string" required>
+  Email subject line. Supports `{{variable}}` substitution using values from `data`.
+</ParamField>
+
+<ParamField body="body" type="string" required>
+  HTML email body. Supports `{{variable}}` substitution. Use `{{field ?? default}}` for fallback values.
+</ParamField>
+
+<ParamField body="from" type="string | object" required>
+  Sender address. Must be from a domain verified in your Plunk project. Accepts a string email or `{"name": "Sender Name", "email": "sender@yourdomain.com"}`.
+</ParamField>
+
+<ParamField body="name" type="string">
+  Sender display name when `from` is a plain string.
+</ParamField>
+
+<ParamField body="data" type="object">
+  Key-value pairs for template variable substitution and contact data. Simple values are persisted to the contact record. To pass a value for this email only without saving it, use `{"value": "ABC", "persistent": false}`.
+</ParamField>
+
+<ParamField body="attachments" type="array">
+  Up to 10 attachments (10 MB total). Each attachment requires `filename` (string), `content` (base64-encoded string), and `contentType` (MIME type string).
+</ParamField>
+
+<ParamField body="template" type="string">
+  Template ID from your dashboard. When set, `subject` and `body` are optional — the template values are used unless you override them.
+</ParamField>
+
+</Step>
+
+<Step title="Track a contact event">
+
+Use `POST /v1/track` to record a named event for a contact. This creates the contact if they don't exist yet, updates their data, and can trigger any matching workflows you've configured.
+
+You can use either your secret key (`sk_*`) or your public key (`pk_*`) for this endpoint.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.useplunk.com/v1/track \
+  -H "Authorization: Bearer pk_your_public_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "event": "signed_up",
+    "data": {
+      "plan": "pro",
+      "company": "Acme Corp"
+    }
+  }'
+```
+
+```javascript Node.js
+const response = await fetch('https://api.useplunk.com/v1/track', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${process.env.PLUNK_PUBLIC_KEY}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    email: 'user@example.com',
+    event: 'signed_up',
+    data: {
+      plan: 'pro',
+      company: 'Acme Corp',
+    },
+  }),
+});
+
+const result = await response.json();
+
+if (!result.success) {
+  throw new Error(`[${result.error.code}] ${result.error.message}`);
+}
+
+console.log('Tracked:', result.data);
+```
+
+```python Python
+import os
+import requests
+
+response = requests.post(
+    'https://api.useplunk.com/v1/track',
+    headers={
+        'Authorization': f'Bearer {os.environ["PLUNK_PUBLIC_KEY"]}',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'email': 'user@example.com',
+        'event': 'signed_up',
+        'data': {
+            'plan': 'pro',
+            'company': 'Acme Corp',
+        },
+    },
+)
+
+result = response.json()
+
+if not result.get('success'):
+    error = result['error']
+    raise Exception(f"[{error['code']}] {error['message']}")
+
+print('Tracked:', result['data'])
+```
+
+</CodeGroup>
+
+A successful response looks like:
+
+```json
+{
+  "success": true,
+  "data": {
+    "contact": "cnt_abc123",
+    "event": "evt_xyz789",
+    "timestamp": "2026-03-30T10:00:00.000Z"
+  }
+}
+```
+
+**Key request fields:**
+
+<ParamField body="email" type="string" required>
+  The contact's email address. If this contact doesn't exist yet, Plunk creates them automatically.
+</ParamField>
+
+<ParamField body="event" type="string" required>
+  Name of the event to record (e.g., `signed_up`, `purchase_completed`, `plan_upgraded`). Use this name in workflows and segments to filter by event.
+</ParamField>
+
+<ParamField body="data" type="object">
+  Key-value pairs saved to the contact record and made available in workflow templates. To pass a value for this event only without persisting it to the contact, use `{"value": "order_123", "persistent": false}`.
+</ParamField>
+
+<ParamField body="subscribed" type="boolean">
+  Explicitly set the contact's subscription status. If omitted, new contacts default to subscribed and existing contacts keep their current status.
+</ParamField>
+
+</Step>
+
+</Steps>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Verify your sending domain" icon="globe" href="/guides/verifying-domains">
+    Add DNS records so you can send from your own domain with proper DKIM and SPF authentication.
+  </Card>
+  <Card title="Build a workflow" icon="diagram-project" href="/features/workflows">
+    Set up an automated email sequence triggered by events you track with `/v1/track`.
+  </Card>
+  <Card title="Send a campaign" icon="bullhorn" href="/features/campaigns">
+    Broadcast an email to all contacts or a targeted segment of your audience.
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/overview">
+    Explore every endpoint: contacts, templates, campaigns, segments, workflows, and more.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
